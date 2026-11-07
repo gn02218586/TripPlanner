@@ -1,0 +1,20 @@
+# 不屬於網站的檔案（config.js 必須上傳，GitHub Pages 需要它）
+
+# Claude Code 設定
+.claude/
+
+# 編輯器
+.vscode/
+.idea/
+*.swp
+
+# 作業系統
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 其他暫存
+*.log
+*.tmp
+node_modules/
+__pycache__/

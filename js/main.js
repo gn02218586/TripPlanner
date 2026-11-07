@@ -24,7 +24,6 @@ async function start() {
   const { getProject } = await import('./store.js');
   const { mountLogin } = await import('./screens/login.js');
   const { mountProjects } = await import('./screens/projects.js');
-  const { mountPlans } = await import('./screens/plans.js');
   const { mountPlanner } = await import('./screens/planner.js');
   const { ensureNickname } = await import('./screens/common.js');
 
@@ -38,17 +37,21 @@ async function start() {
     if (!state.user) { cleanup = mountLogin(app); return; }
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
     try {
-      if (parts[0] === 'p' && parts[1]) {
+      if (parts[0] === 'p' && parts[1] && parts[2]) {
+        // #/p/專案/規劃：地圖畫面
         const project = await getProject(parts[1]);
         if (my !== token) return;
         if (!project) { location.hash = '#/'; return; }
         state.project = project;
-        const c = parts[2] ? await mountPlanner(app, project, parts[2]) : await mountPlans(app, project);
+        const c = await mountPlanner(app, project, parts[2]);
         if (my !== token) { await c(); return; }
         cleanup = c;
       } else {
+        // #/ 或 #/p/專案：專案列表（後者自動展開該專案的分支）
         state.project = null;
-        cleanup = await mountProjects(app);
+        const c = await mountProjects(app, parts[0] === 'p' ? parts[1] || null : null);
+        if (my !== token) { await c(); return; }
+        cleanup = c;
       }
     } catch (e) {
       console.error(e);

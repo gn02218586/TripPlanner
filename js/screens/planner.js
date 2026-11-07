@@ -1,6 +1,6 @@
 // 主畫面：左地圖、右上行程流程、右下備用庫；頂部列含存檔狀態、歷史、匯出、專案設定
-import { state, on, mutate, forEachLeg } from '../state.js';
-import { startPlanSession, endPlanSession, listHistory, restoreSnapshot, hasUnsaved, saveNow } from '../store.js';
+import { state, on, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js';
+import { startPlanSession, endPlanSession, listHistory, restoreSnapshot, hasUnsaved, saveNow, updateProject } from '../store.js';
 import { initRouteCache, requestRoutes, getRouteInfo } from '../routes.js';
 import { computeSchedule } from '../schedule.js';
 import { createMapView } from '../map-view.js';
@@ -18,9 +18,21 @@ export async function mountPlanner(app, project, planId) {
   const offs = [];
   state.selectedDay = null;
   state.refPlan = null;
+  state.selectedStop = null;
+  state.selectedStartOf = null;
+  state.hoverBackup = null;
 
   app.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'muted' }, '載入規劃中…')));
   await Promise.all([initRouteCache(project.id), startPlanSession(project.id, planId)]);
+
+  // 舊資料轉換（一次性）：專案還沒有「每日包車時數」表時，依這份規劃舊的每日覆蓋值建立
+  if (!Array.isArray(project.charterHoursByDay)) {
+    const table = deriveCharterTable(project, state.plan);
+    project.charterHoursByDay = table;
+    updateProject(project.id, { charterHoursByDay: table })
+      .then(() => toast('已把每日包車時數移到專案設定'))
+      .catch(e => console.warn('包車時數轉換失敗', e));
+  }
 
   // ---------- 時間表（依資料變動快取） ----------
   let schedCache = null;
@@ -39,7 +51,7 @@ export async function mountPlanner(app, project, planId) {
   const side = h('div', { class: 'side' }, itinEl, splitter, backupEl);
   const root = h('div', { class: 'planner' },
     topBar([
-      h('a', { href: `#/p/${project.id}`, class: 'link-btn' }, '← 規劃列表'),
+      h('a', { href: `#/p/${project.id}`, class: 'link-btn', title: '返回專案列表（自動展開這個專案）' }, '← 專案列表'),
       h('span', { class: 'proj-name' }, project.name), h('span', { class: 'muted' }, '/'), planNameBtn, statusEl,
     ], [
       h('button', { class: 'small-btn', onClick: openHistory }, '歷史'),
@@ -67,7 +79,7 @@ export async function mountPlanner(app, project, planId) {
     splitter.addEventListener('pointermove', move);
     splitter.addEventListener('pointerup', up, { once: true });
   });
-  const toggleCollapse = () => side.classList.toggle('backup-collapsed');
+  const toggleCollapse = (collapsed) => side.classList.toggle('backup-collapsed', collapsed);
 
   // ---------- 子畫面 ----------
   const mapView = await createMapView(mapEl, { getSchedule });
@@ -117,7 +129,15 @@ export async function mountPlanner(app, project, planId) {
   }));
   offs.push(on('plan', () => { if (!hasUnsaved()) banner.classList.add('hidden'); }));
 
-  const beforeUnload = (e) => { if (hasUnsaved()) { saveNow(); e.preventDefault(); e.returnValue = ''; } };
+  // Esc 取消選取行程點（輸入框中按 Esc 不處理）
+  const onKey = (e) => {
+    if (e.key !== 'Escape' || !state.selectedStop) return;
+    if (e.target.closest?.('input,textarea,select') || document.querySelector('.modal-overlay')) return;
+    selectStop(null);
+  };
+  document.addEventListener('keydown', onKey);
+
+  const beforeUnload =(e) => { if (hasUnsaved()) { saveNow(); e.preventDefault(); e.returnValue = ''; } };
   window.addEventListener('beforeunload', beforeUnload);
 
   async function renamePlan() {
@@ -145,17 +165,20 @@ export async function mountPlanner(app, project, planId) {
   function openSettings() {
     openProjectForm({
       project: state.project,
+      plan: state.plan,
       onSaved: async (id, data) => {
         const boundsChanged = data.bounds && JSON.stringify(data.bounds) !== JSON.stringify(state.project.bounds);
         Object.assign(state.project, data);
         if (boundsChanged) { await saveNow(); location.reload(); return; }
-        mutate(() => {}); // 天數、日期等變更：重新正規化並存檔
+        mutate(() => {}); // 天數、日期、包車時數、冬季係數等變更：重新正規化、重算並存檔
       },
     });
   }
 
   return async () => {
     window.removeEventListener('beforeunload', beforeUnload);
+    document.removeEventListener('keydown', onKey);
+    state.selectedStop = null; state.hoverBackup = null;
     debouncedRequest.cancel();
     offs.forEach(f => f());
     mapView.destroy(); itinView.destroy(); backupView.destroy();

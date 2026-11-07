@@ -1,11 +1,12 @@
 // 右上：行程流程（依天分組）、搜尋、路段資訊、拖曳排序
 import { lib } from './maps-loader.js';
 import {
-  state, on, emit, mutate, MODES, MODE_LABEL, updateStop, updateLeg, dayCharterHours,
+  state, on, emit, mutate, MODES, MODE_LABEL, updateStop, updateLeg, dayCharterHours, selectStop,
+  prevPoint, findStop, stopToBackup, removeStop, backupTabFor, backupHasPlace,
 } from './state.js';
 import { stopLabelMap, typeIcon, dayColor } from './markers.js';
 import { retryRoute, gmapsDirUrl } from './routes.js';
-import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, num, parseHM } from './utils.js';
+import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, fmtShortDur, num, parseHM, toast, confirmDialog } from './utils.js';
 import { buildAddPanel } from './ui-common.js';
 import { makeSortable } from './dnd.js';
 
@@ -18,7 +19,8 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
   const searchResult = h('div', { class: 'search-result' });
   const chips = h('div', { class: 'day-chips' });
   const daysEl = h('div', { class: 'days scroll' });
-  container.replaceChildren(h('div', { class: 'itin-toolbar' }, searchBox, searchResult, chips), daysEl);
+  // 搜尋框（左）與天數篩選（右）同一行；寬度不夠時篩選按鈕換到第二行
+  container.replaceChildren(h('div', { class: 'itin-toolbar' }, h('div', { class: 'itin-row' }, searchBox, chips), searchResult), daysEl);
 
   // ---------- 搜尋（Places API New：PlaceAutocompleteElement） ----------
   try {
@@ -66,10 +68,8 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
   function selectDay(i) {
     state.selectedDay = i;
     emit('select');
-    if (i != null) {
-      mapView.fitDay(i);
-      daysEl.querySelector(`[data-day-section="${i}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    daysEl.scrollTop = 0;
+    if (i != null) mapView.fitDay(i);
   }
 
   let deferred = false;
@@ -88,7 +88,11 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
     renderChips();
     const sched = getSchedule();
     const labels = stopLabelMap(state.plan);
-    daysEl.replaceChildren(...state.plan.days.map((day, di) => dayEl(day, di, sched[di], labels)));
+    // 依天篩選：選了某天就只顯示那天
+    const sel = state.selectedDay;
+    daysEl.replaceChildren(...state.plan.days
+      .map((day, di) => (sel == null || sel === di ? dayEl(day, di, sched[di], labels) : null))
+      .filter(Boolean));
     daysEl.scrollTop = scroll;
   }
 
@@ -96,34 +100,28 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
     const n = state.plan.days.length;
     const color = dayColor(di, n);
     const sel = state.selectedDay;
-    const proj = state.project;
 
-    const departIn = h('input', { type: 'time', value: day.departTime, onChange: () => {
-      if (parseHM(departIn.value) != null) mutate(p => { p.days[di].departTime = departIn.value; });
-    } });
     const charterCb = h('input', { type: 'checkbox', checked: day.charter, onChange: () => mutate(p => { p.days[di].charter = charterCb.checked; }) });
-    const hoursIn = h('input', { type: 'number', min: 0, step: 0.5, class: 'num', value: day.charterHours ?? '', placeholder: String(proj.defaultCharterHours ?? ''),
-      title: '留空＝沿用專案設定', onChange: () => mutate(p => { p.days[di].charterHours = num(hoursIn.value); }) });
-    const winterIn = h('input', { type: 'text', inputmode: 'decimal', class: 'num', value: day.winterFactor ?? '', placeholder: String(proj.winterFactor ?? 1),
-      title: '留空＝沿用專案設定', onChange: () => mutate(p => { p.days[di].winterFactor = num(winterIn.value); }) });
 
     const ul = h('ul', { class: 'stop-list', dataset: { kind: 'trip', day: di } },
       day.stops.map((s, i) => stopEl(s, di, i, sd.stops[i], labels.get(s.id) || '', color)));
     sortables.push(makeSortable(ul, { handle: '.stop-card' }));
 
-    const limit = dayCharterHours(day);
+    // 起點列（第一天除外）：前一天最後一點；當天出發時間的輸入框放在這裡
+    const origin = sd.isTripStart ? null : prevPoint(state.plan, di, 0);
+    const startRow = origin ? startRowEl(origin, di, labels.get(origin.id) || '', dayColor(findStop(origin.id)?.dayIdx ?? di, n)) : null;
+
+    const limit = dayCharterHours(di);
     return h('section', {
-      class: 'day' + (sel === di ? ' selected' : '') + (sel != null && sel !== di ? ' dimmed' : ''),
+      class: 'day' + (sel === di ? ' selected' : ''),
       style: { '--c': color }, dataset: { daySection: di },
     },
       h('div', { class: 'day-head' },
-        h('button', { class: 'day-title', onClick: () => selectDay(sel === di ? null : di), title: '點選以突出顯示這天' },
+        h('button', { class: 'day-title', onClick: () => selectDay(sel === di ? null : di), title: sel === di ? '點選以顯示全部天' : '點選以只顯示這天' },
           h('span', { class: 'day-dot' }), `Day ${di + 1}`, h('span', { class: 'muted' }, fmtDate(day.date))),
         h('div', { class: 'day-controls' },
-          h('label', {}, '出發', departIn),
-          h('label', {}, charterCb, '包車'),
-          day.charter ? h('label', {}, '上限', hoursIn, '時') : null,
-          h('label', { title: '開車時間 × 冬季係數' }, '冬季×', winterIn))),
+          h('label', {}, charterCb, '包車'))),
+      startRow,
       ul,
       day.stops.length === 0 ? h('div', { class: 'empty-hint' }, '可從備用庫拖曳，或搜尋／點地圖加入') : null,
       h('div', { class: 'day-foot' },
@@ -137,31 +135,101 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
   }
 
   function stopEl(s, di, i, st, label, color) {
-    const stayIn = h('input', { type: 'number', min: 0, step: 5, class: 'num', value: s.stayMin ?? 0,
+    const stayIn = h('input', { type: 'number', min: 0, max: 999, step: 5, class: 'num stay-in', value: s.stayMin ?? 0,
       onChange: () => updateStop(s.id, { stayMin: Math.max(0, +stayIn.value || 0) }) });
     let times;
-    if (st.arr == null) times = h('span', {}, `出發 ${fmtHM(st.dep)}`);
-    else if (s.type === 'hotel') times = h('span', {}, `抵達 ${fmtHM(st.arr)}（住宿）`);
+    if (st.isStart) {
+      // 行程起點（例如 ✈去）：抵達時間（＝當天時間）可在這裡改 → 停留 → 出發
+      times = h('span', { class: 'times', title: '抵達起點的時間；出發時間＝抵達＋停留' },
+        '抵達 ', dayTimeInput(di), ' → 停留 ', stayIn, ` 分 → 出發 ${fmtHM(st.dep)}`);
+    } else if (st.arr == null) times = h('span', { class: 'times' }, `出發 ${fmtHM(st.dep)}`);
+    else if (s.type === 'hotel') times = h('span', { class: 'times' }, `抵達 ${fmtHM(st.arr)}（住宿）`);
     else times = h('span', { class: 'times' }, `抵達 ${fmtHM(st.arr)} → 停留 `, stayIn, ` 分 → 出發 ${fmtHM(st.dep)}`);
 
-    return h('li', { class: 'stop', dataset: { id: s.id } },
-      st.leg ? legEl(s, st) : null,
-      h('div', { class: 'stop-card', title: '拖曳可排序或移到別天' },
+    // 交通（從前一點到此點）與抵達合併成一行；起點沒有前一段，只顯示時間
+    const leg = st.leg ? legParts(s, st) : null;
+    const selected = state.selectedStop === s.id && state.selectedStartOf == null;
+
+    return h('li', { class: 'stop' + (selected ? ' selected-stop' : ''), dataset: { id: s.id } },
+      h('div', {
+        class: 'stop-card', title: '點選以選取（再點一次或按 Esc 取消）；拖曳可排序或移到別天',
+        onClick: (e) => {
+          if (e.target.closest('input,select,textarea,button,a')) return;
+          selectStop(s.id);   // 地圖會自動縮放到抵達這個點的路段
+        },
+      },
         typeIcon(s.type, color),
+        s.type !== 'airport' ? h('div', { class: 'stop-btns' },
+          h('button', { class: 'icon-btn stop-btn', title: '移回備用庫', onClick: () => moveToBackup(s) }, '↩'),
+          h('button', { class: 'icon-btn stop-btn danger-x', title: '從行程刪除', onClick: () => deleteStop(s) }, '×')) : null,
         h('div', { class: 'stop-main' },
           h('div', { class: 'stop-name' },
             label ? h('span', { class: 'stop-label', style: { background: color } }, label) : null,
-            h('a', { href: '#', onClick: (e) => { e.preventDefault(); mapView.focusStop(s.id); } }, s.name)),
-          h('div', { class: 'stop-times small' }, times),
+            h('span', {}, s.name)),
+          // 交通（不換行的一組）＋抵達時間（不換行的一組）；寬度不夠時從「抵達」開始換行
+          h('div', { class: 'combo-line small' }, leg ? h('span', { class: 'leg-group' }, ...leg.line) : null, times),
+          leg?.notes,
           s.note ? h('div', { class: 'stop-note small muted' }, s.note) : null)));
   }
 
-  function legEl(s, st) {
+  /** ↩ 移回備用庫：依類型放到對應頁簽；已有同一地點就不重複加入 */
+  function moveToBackup(s) {
+    const tabId = backupTabFor(s.type);
+    const tabName = state.plan.backup.tabs.find(t => t.id === tabId)?.name || '';
+    const dup = backupHasPlace(s);
+    stopToBackup(s.id, tabId);   // 會從行程移除；若正被選取會自動清除選取，路段隨後重算
+    toast(dup ? `已從行程移除（備用庫已有「${s.name}」）` : `已移回備用庫「${tabName}」`, 'ok');
+  }
+
+  /** × 從行程刪除（需確認） */
+  async function deleteStop(s) {
+    if (!(await confirmDialog(`確定從行程刪除「${s.name}」？`, '刪除', true))) return;
+    removeStop(s.id);
+  }
+
+  /** 當天時間輸入框（第一天＝抵達起點，其他天＝從起點出發） */
+  function dayTimeInput(di) {
+    const inp = h('input', { type: 'time', class: 'day-time', value: state.plan.days[di].departTime, onChange: () => {
+      if (parseHM(inp.value) != null) mutate(p => { p.days[di].departTime = inp.value; });
+    } });
+    return inp;
+  }
+
+  /** 起點列：由前一天最後一點推導，不能拖曳、刪除或改名；可選取 */
+  function startRowEl(origin, di, label, color) {
+    const selected = state.selectedStop === origin.id && state.selectedStartOf === di;
+    const notHotel = origin.type !== 'hotel';
+    return h('div', {
+      class: 'start-row' + (selected ? ' selected-stop' : '') + (notHotel ? ' start-warn' : ''),
+      title: '起點為前一天的最後一點，請在前一天修改',
+      onClick: (e) => {
+        if (e.target.closest('input,select,textarea,button,a')) return;
+        selectStop(origin.id, true, di);
+      },
+    },
+      h('div', { class: 'start-card' },
+        typeIcon(origin.type, color),
+        h('div', { class: 'stop-main' },
+          h('div', { class: 'stop-name' },
+            h('span', { class: 'start-tag' }, '起點'),
+            label ? h('span', { class: 'stop-label', style: { background: color } }, label) : null,
+            h('span', {}, origin.name)),
+          h('div', { class: 'combo-line small' },
+            h('span', { class: 'times', title: '從起點出發的時間' }, '出發 ', dayTimeInput(di))),
+          notHotel ? h('div', { class: 'leg-note warn' }, '⚠ 前一天尚未安排住宿') : null)));
+  }
+
+  const MODE_ICON = { drive: '🚗', transit: '🚌', walk: '🚶', other: '✋' };
+
+  /** 路段資訊：line＝與抵達同一行的部分；notes＝放在該行下方的提示 */
+  function legParts(s, st) {
     const leg = s.leg;
     const d = st.leg;
     const from = st.from;
-    const modeSel = selectEl(MODES.map(m => ({ value: m, label: MODE_LABEL[m] })), leg.mode,
-      { class: 'mode-sel', onChange: () => updateLeg(s.id, { mode: modeSel.value }) });
+    // 收合時只顯示圖示（🚗▾），展開的選項顯示圖示＋文字：透明的原生 select 疊在圖示上
+    const modeSel = selectEl(MODES.map(m => ({ value: m, label: `${MODE_ICON[m]} ${MODE_LABEL[m]}` })), leg.mode,
+      { class: 'mode-sel', title: MODE_LABEL[leg.mode], onChange: () => updateLeg(s.id, { mode: modeSel.value }) });
+    const modePick = h('span', { class: 'mode-pick' }, h('span', { class: 'mode-face' }, `${MODE_ICON[leg.mode]}▾`), modeSel);
 
     const setManual = (v) => {
       const m = num(v);
@@ -177,37 +245,40 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
       return h('span', { class: 'manual-edit' }, inp, '分');
     };
 
-    const parts = [];
+    const line = [modePick];
+    const notes = [];
     const inf = d.info;
+    const isManual = leg.manualMin != null;
     if (leg.mode === 'other') {
-      parts.push(h('span', {}, '手動輸入：'), manualInput());
+      line.push(manualInput());
     } else {
-      if (inf.status === 'pending') parts.push(h('span', { class: 'muted' }, '計算中…'));
-      else if (inf.status === 'error') parts.push(h('span', { class: 'error' }, '查詢失敗 '),
+      if (inf.status === 'pending') line.push(h('span', { class: 'muted' }, '計算中…'));
+      else if (inf.status === 'error') line.push(h('span', { class: 'error' }, '查詢失敗'),
         h('button', { class: 'link-btn', onClick: () => retryRoute(inf.key) }, '重試'));
-      else if (inf.status === 'noRoute') parts.push(h('span', { class: 'warn' }, 'Google 無資料，請手動輸入'));
+      else if (inf.status === 'noRoute') notes.push(h('div', { class: 'leg-note warn' }, '⚠ Google 無資料，請手動輸入'));
       else if (inf.status === 'ok') {
-        parts.push(h('span', {}, fmtDist(inf.distanceMeters)));
-        if (leg.mode === 'drive') parts.push(h('span', { class: leg.manualMin != null ? 'muted' : '' },
-          `Google ${fmtDur(d.gMin)} × ${d.winter} = ${fmtDur(d.adjMin)}`));
-        else parts.push(h('span', { class: leg.manualMin != null ? 'muted' : '' }, `Google ${fmtDur(d.gMin)}`));
+        line.push(h('span', {}, fmtDist(inf.distanceMeters)));
+        // 只顯示結果；滑鼠移上顯示計算過程
+        const tip = leg.mode === 'drive' ? `Google ${fmtShortDur(d.gMin)} × 冬季係數 ${d.winter}` : `Google ${fmtShortDur(d.gMin)}`;
+        line.push(h('span', { class: 'leg-time' + (isManual ? ' muted' : ''), title: tip }, fmtShortDur(d.adjMin)));
       }
-      if (leg.manualMin != null && !editing.has(s.id)) parts.push(h('span', { class: 'badge' }, `手動 ${fmtDur(leg.manualMin)}`));
-      if (editing.has(s.id)) parts.push(manualInput());
-      parts.push(h('button', { class: 'icon-btn', title: '手動輸入時間（不乘冬季係數）', onClick: () => { editing.add(s.id); render(); } }, '✏️'));
-      if (leg.manualMin != null) parts.push(h('button', { class: 'icon-btn', title: '恢復 Google 時間', onClick: () => updateLeg(s.id, { manualMin: null, manualFrom: null, manualTo: null }) }, '↺'));
+      if (isManual && !editing.has(s.id)) line.push(h('span', { class: 'badge' }, `手動 ${fmtShortDur(leg.manualMin)}`));
+      if (editing.has(s.id)) line.push(manualInput());
+      line.push(h('button', { class: 'icon-btn', title: '手動輸入時間（不乘冬季係數）', onClick: () => { editing.add(s.id); render(); } }, '✏️'));
+      if (isManual) line.push(h('button', { class: 'icon-btn', title: '恢復 Google 時間', onClick: () => updateLeg(s.id, { manualMin: null, manualFrom: null, manualTo: null }) }, '↺'));
     }
-    parts.push(h('a', { class: 'gm-link', href: gmapsDirUrl(from, s, leg.mode), target: '_blank', rel: 'noopener', title: '在 Google Maps 開啟此段' }, '在 Google Maps 開啟'));
-
-    return h('div', { class: `leg leg-${leg.mode}` },
-      h('div', { class: 'leg-line' }, modeSel, ...parts),
-      d.moved ? h('div', { class: 'leg-moved' }, '⚠ 地點已變更，請確認時間 ',
-        h('button', { class: 'link-btn', onClick: () => updateLeg(s.id, { manualFrom: { lat: from.lat, lng: from.lng }, manualTo: { lat: s.lat, lng: s.lng } }) }, '時間沒問題')) : null);
+    line.push(h('a', { class: 'gm-icon', href: gmapsDirUrl(from, s, leg.mode), target: '_blank', rel: 'noopener', title: '在 Google Maps 開啟' }, '🗺'));
+    // 匯入時標示「手動」的路段：還沒輸入手動時間前提醒
+    if (leg.needManual && leg.manualMin == null) notes.push(h('div', { class: 'leg-note warn' }, '⚠ 請按 ✏️ 手動輸入時間'));
+    if (d.moved) notes.push(h('div', { class: 'leg-moved' }, '⚠ 地點已變更，請確認時間 ',
+      h('button', { class: 'link-btn', onClick: () => updateLeg(s.id, { manualFrom: { lat: from.lat, lng: from.lng }, manualTo: { lat: s.lat, lng: s.lng } }) }, '時間沒問題')));
+    return { line, notes };
   }
 
   offs.push(on('plan', render));
   offs.push(on('routes', render));
   offs.push(on('select', render));
+  offs.push(on('stopSelect', render));
   render();
 
   return { destroy() { offs.forEach(f => f()); sortables.forEach(s => s.destroy()); }, render };

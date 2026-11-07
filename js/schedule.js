@@ -33,14 +33,16 @@ export function computeSchedule(plan, project) {
   const lastDayIdx = plan.days.length - 1;
   return plan.days.map((day, di) => {
     const start = parseHM(day.departTime) ?? 540;
-    const winter = dayWinter(day);
+    const winter = dayWinter(di, project);
     let t = start, totalDist = 0, travelMin = 0, lastArr = null, unknownLegs = 0;
+    let charterStart = start, isTripStart = false;
     const stops = day.stops.map((s, i) => {
       const from = prevPoint(plan, di, i);
       if (!from || !s.leg) {
-        // 整份行程的第一點：出發時間＝當天出發時間
-        const r = { arr: null, dep: start, legStart: null, leg: null, from: null };
-        t = start;
+        // 整份行程的第一點（例如 ✈去）：當天時間為「抵達」，出發＝抵達＋停留
+        const stay = +s.stayMin || 0;
+        const r = { arr: start, dep: start + stay, legStart: null, leg: null, from: null, isStart: true };
+        t = r.dep; charterStart = r.dep; isTripStart = true;
         return r;
       }
       const legStart = i === 0 ? start : t;      // 當天第一點：從前一天最後一點（住宿）於出發時間出發
@@ -55,10 +57,11 @@ export function computeSchedule(plan, project) {
       return { arr, dep, legStart, leg, from };
     });
     const end = lastArr;
-    const charterMin = end != null ? end - start : 0;
+    // 包車從出發時間起算（行程起點那天＝離開起點的時間）
+    const charterMin = end != null ? end - charterStart : 0;
     const warnings = [];
     if (day.charter && end != null) {
-      const limit = (dayCharterHours(day) || 0) * 60;
+      const limit = (dayCharterHours(di, project) || 0) * 60;
       if (limit > 0 && charterMin > limit) warnings.push({ level: 'error', text: `包車超時 ${Math.round(charterMin - limit)} 分鐘` });
     }
     if (latest != null && end != null && end > latest) warnings.push({ level: 'error', text: `最後抵達時間晚於最晚結束時間 ${project.latestEndTime}` });
@@ -67,6 +70,6 @@ export function computeSchedule(plan, project) {
       if (!last || last.type !== 'hotel') warnings.push({ level: 'warn', text: '這天還沒有安排住宿' });
     }
     if (unknownLegs) warnings.push({ level: 'warn', text: `有 ${unknownLegs} 段路程尚無時間` });
-    return { stops, totalDist, travelMin, start, end, charterMin, warnings, winter };
+    return { stops, totalDist, travelMin, start, end, charterMin, warnings, winter, isTripStart };
   });
 }

@@ -17,18 +17,20 @@ export async function runSeed() {
     numDays: 6,
     defaultMode: 'drive',
     winterFactor: 1.3,
+    winterPerDay: false,
+    winterFactorsByDay: null,
     defaultCharterHours: 10,
+    // 每日包車時數：2/15 與 2/20 上限 8 小時，其他天 10 小時
+    charterHoursByDay: [8, 10, 10, 10, 10, 8],
     latestEndTime: '20:00',
     defaultStart: { name: '釧路機場', placeId: null, lat: 43.0411, lng: 144.1928, type: 'airport' },
     defaultEnd: { name: '女滿別機場', placeId: null, lat: 43.8806, lng: 144.1642, type: 'airport' },
   };
   const pid = await createProject(project);
 
-  // 範例規劃：每天包車；2/15 與 2/20 上限 8 小時（其他天沿用專案 10 小時）；Day 1 出發 09:15
+  // 範例規劃：每天包車；Day 1 於 09:15 抵達釧路機場（預設停留 45 分）
   const data = blankPlanData(project);
   data.days[0].departTime = '09:15';
-  data.days[0].charterHours = 8;
-  data.days[5].charterHours = 8;
   data.days.forEach(d => { d.charter = true; });
   await createPlan(pid, { name: '範例規劃', ...data });
   toast(`已建立「${SEED_NAME}」專案與範例規劃`, 'ok');

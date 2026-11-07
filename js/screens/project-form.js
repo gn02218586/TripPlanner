@@ -1,10 +1,10 @@
 // 建立專案／專案設定：地圖範圍（搜尋區域 viewport 或鎖定目前畫面）、日期、天數與各項預設值
 import { lib } from '../maps-loader.js';
-import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL } from '../state.js';
+import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL, deriveCharterTable } from '../state.js';
 import { createProject, updateProject } from '../store.js';
-import { h, selectEl, toast, num } from '../utils.js';
+import { h, selectEl, toast, num, fmtDate, addDays } from '../utils.js';
 
-export async function openProjectForm({ project = null, onSaved }) {
+export async function openProjectForm({ project = null, plan = null, onSaved }) {
   const isNew = !project;
   const canEditBounds = isNew || project.creatorNickname === state.nickname;
   let bounds = project?.bounds ? { ...project.bounds } : null;
@@ -15,11 +15,51 @@ export async function openProjectForm({ project = null, onSaved }) {
   const dateIn = h('input', { type: 'date', value: project?.startDate || '' });
   const daysIn = h('input', { type: 'number', min: 1, max: 30, class: 'num', value: project?.numDays ?? 5 });
   const modeSel = selectEl(MODES.map(m => ({ value: m, label: MODE_LABEL[m] })), project?.defaultMode || 'drive');
-  const winterIn = h('input', { type: 'text', inputmode: 'decimal', class: 'num', value: project?.winterFactor ?? 1, title: '可填小數，例如 1.3' });
-  const charterIn = h('input', { type: 'number', min: 0, step: 0.5, class: 'num', value: project?.defaultCharterHours ?? 10 });
+  const winterIn = h('input', { type: 'text', inputmode: 'decimal', class: 'num', value: project?.winterFactor ?? 1.3, title: '可填小數，例如 1.3' });
   const latestIn = h('input', { type: 'time', value: project?.latestEndTime || '20:00' });
   const boundsText = h('div', { class: 'small' });
   const mapDiv = h('div', { class: 'pf-map' });
+
+  // ---------- 每日包車時數表、冬季係數 ----------
+  // 預設值沿用目前資料：專案已有的表 → 目前規劃舊的每日覆蓋值 → 10 小時
+  let charterHours = project ? deriveCharterTable(project, plan) : [];
+  let winterPerDay = !!project?.winterPerDay;
+  let winterByDay = project?.winterFactorsByDay ? [...project.winterFactorsByDay] : [];
+  const charterTable = h('div', { class: 'day-table' });
+  const winterTable = h('div', { class: 'day-table' });
+  const winterPerDayCb = h('input', { type: 'checkbox', checked: winterPerDay });
+
+  function dayRows() {
+    const n = Math.max(0, Math.min(30, Math.round(num(daysIn.value, 0))));
+    return Array.from({ length: n }, (_, i) => ({ i, label: `Day ${i + 1}${dateIn.value ? '　' + fmtDate(addDays(dateIn.value, i)) : ''}` }));
+  }
+  function renderCharterTable() {
+    const rows = dayRows();
+    charterHours = rows.map(r => charterHours[r.i] ?? charterHours[r.i - 1] ?? 10);
+    charterTable.replaceChildren(...rows.map(r => h('label', { class: 'day-row' }, h('span', {}, r.label),
+      h('span', {}, h('input', { type: 'number', min: 0, step: 0.5, class: 'num', value: charterHours[r.i],
+        onChange: (e) => { charterHours[r.i] = Math.max(0, num(e.target.value, 0)); } }), ' 小時'))));
+  }
+  function renderWinterTable() {
+    winterTable.classList.toggle('hidden', !winterPerDay);
+    if (!winterPerDay) return;
+    const base = num(winterIn.value, 1);
+    const rows = dayRows();
+    winterByDay = rows.map(r => winterByDay[r.i] ?? base);
+    winterTable.replaceChildren(...rows.map(r => h('label', { class: 'day-row' }, h('span', {}, r.label),
+      h('span', {}, '× ', h('input', { type: 'text', inputmode: 'decimal', class: 'num', value: winterByDay[r.i],
+        onChange: (e) => { winterByDay[r.i] = num(e.target.value, base); } })))));
+  }
+  winterPerDayCb.addEventListener('change', () => {
+    winterPerDay = winterPerDayCb.checked;
+    // 勾選：每天帶入統一數值；取消：恢復全部使用統一數值
+    if (winterPerDay) winterByDay = [];
+    renderWinterTable();
+  });
+  dateIn.addEventListener('change', () => { renderCharterTable(); renderWinterTable(); });
+  daysIn.addEventListener('change', () => { renderCharterTable(); renderWinterTable(); });
+  renderCharterTable();
+  renderWinterTable();
 
   const close = () => overlay.remove();
   const overlay = h('div', { class: 'modal-overlay' });
@@ -41,9 +81,14 @@ export async function openProjectForm({ project = null, onSaved }) {
       h('label', {}, '開始日期', dateIn),
       h('label', {}, '天數', daysIn),
       h('label', {}, '預設交通方式', modeSel),
-      h('label', {}, '冬季係數', winterIn),
-      h('label', {}, '每天包車時數', charterIn),
       h('label', {}, '最晚結束時間', latestIn)),
+    h('fieldset', {},
+      h('legend', {}, '冬季係數（開車時間 ×）'),
+      h('div', { class: 'row' },
+        h('label', { class: 'row' }, '統一數值', winterIn),
+        h('label', { class: 'row' }, winterPerDayCb, '每天個別設定')),
+      winterTable),
+    h('fieldset', {}, h('legend', {}, '每日包車時數'), charterTable),
     h('fieldset', {}, h('legend', {}, '預設起點（Day 1 第一點）'), startBox),
     h('fieldset', {}, h('legend', {}, '預設終點（最後一天最後一點）'), endBox),
     !isNew ? h('div', { class: 'small muted' }, '預設起訖點只影響之後新建的空白規劃。') : null,
@@ -131,7 +176,10 @@ export async function openProjectForm({ project = null, onSaved }) {
       numDays: Math.round(num(daysIn.value, 0)),
       defaultMode: modeSel.value,
       winterFactor: num(winterIn.value, 1),
-      defaultCharterHours: num(charterIn.value, 0),
+      winterPerDay,
+      winterFactorsByDay: winterPerDay ? winterByDay.slice(0, Math.round(num(daysIn.value, 0))) : null,
+      charterHoursByDay: charterHours.slice(0, Math.round(num(daysIn.value, 0))),
+      defaultCharterHours: project?.defaultCharterHours ?? 10,
       latestEndTime: latestIn.value || '20:00',
       defaultStart, defaultEnd,
     };
@@ -140,6 +188,7 @@ export async function openProjectForm({ project = null, onSaved }) {
     if (!data.startDate) return toast('請選擇開始日期', 'warn');
     if (!(data.numDays >= 1 && data.numDays <= 30)) return toast('天數需在 1–30 之間', 'warn');
     if (!(data.winterFactor > 0)) return toast('冬季係數需大於 0', 'warn');
+    if (data.winterPerDay && data.winterFactorsByDay.some(v => !(v > 0))) return toast('每天的冬季係數需大於 0', 'warn');
     if (canEditBounds) data.bounds = bounds;
     try {
       if (isNew) {

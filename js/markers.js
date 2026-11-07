@@ -1,5 +1,5 @@
 // 標記與圖示：地圖、行程清單、備用庫共用同一套外觀
-import { h, samePlace } from './utils.js';
+import { h, samePlace, fmtDist } from './utils.js';
 
 const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#0aa6a6', '#d6338a', '#808000', '#9a6324', '#000075'];
 /** 依天數自動配色 */
@@ -14,10 +14,29 @@ export const REF_COLOR = '#7b3fe4';
 export const TYPE_GLYPH = { spot: '', food: '🍴', hotel: '', airport: '✈' };
 
 /** 地圖標記內容 */
-export function markerEl({ type = 'spot', label = '', color = '#555', faded = false, small = false }) {
-  const el = h('div', { class: `mk mk-${type}${faded ? ' mk-faded' : ''}${small ? ' mk-small' : ''}`, style: { '--c': color } },
-    h('span', { class: 'mk-body' }, label));
-  return el;
+export function markerEl({ type = 'spot', label = '', name = '', color = '#555', faded = false, small = false, selected = false, ring = false }) {
+  // 名稱以絕對定位放在編號右側，標記錨點仍在編號圖形上；過長以 CSS 截斷加「…」，滑鼠移上顯示完整名稱
+  // selected＝選取的點（放大）；ring＝選取點的前一點（加外框）
+  const cls = `mk mk-${type}${faded ? ' mk-faded' : ''}${small ? ' mk-small' : ''}${selected ? ' mk-selected' : ''}${ring ? ' mk-ring' : ''}`;
+  return h('div', { class: cls, style: { '--c': color }, title: name || null },
+    h('span', { class: 'mk-body' }, label),
+    name ? h('span', { class: 'mk-name' }, name) : null);
+}
+
+/** 比較資訊內容（備用庫該列與地圖資訊框共用） */
+export function compareNodes(c) {
+  return [
+    h('span', { class: 'muted' }, `與「${c.sel.stop.name}」`),
+    c.dist != null ? h('strong', {}, fmtDist(c.dist)) : null,
+    ...c.parts.map(p => h('span', { class: p.dim ? 'cmp-dim' : '' }, p.text)),
+    c.pending ? h('span', { class: 'muted' }, '計算中…') : null,
+    !c.pending && !c.parts.length ? h('span', { class: 'muted' }, '查無路線資料') : null,
+  ].filter(Boolean);
+}
+
+/** 路段中間的移動時間標籤 */
+export function legTagEl(text, color, { emph = false, fade = false } = {}) {
+  return h('div', { class: 'leg-tag' + (emph ? ' leg-tag-emph' : '') + (fade ? ' leg-tag-fade' : ''), style: { '--c': color } }, text);
 }
 
 /** 清單用小圖示 */

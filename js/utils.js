@@ -75,6 +75,13 @@ export function fmtDur(min) {
   return `${Math.floor(m / 60)} 小時${m % 60 ? ` ${m % 60} 分` : ''}`;
 }
 
+/** 精簡時間（地圖標籤用）：41分、1時5分 */
+export function fmtShortDur(min) {
+  const m = Math.round(min);
+  if (m < 60) return `${m}分`;
+  return `${Math.floor(m / 60)}時${m % 60 ? `${m % 60}分` : ''}`;
+}
+
 export function fmtDist(meters) {
   if (meters == null) return '—';
   return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
