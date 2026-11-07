@@ -1,7 +1,6 @@
 // 專案列表＋規劃分支圖：左側專案卡片，點選後右側（窄螢幕在卡片下方）展開該專案的規劃分支
 import { listProjects } from '../store.js';
-import { runSeed } from '../seed.js';
-import { h, fmtDate, fmtDateTime, toast } from '../utils.js';
+import { h, fmtDate, fmtDateTime } from '../utils.js';
 import { openProjectForm } from './project-form.js';
 import { topBar } from './common.js';
 import { buildBranch } from './plans.js';
@@ -23,10 +22,7 @@ export async function mountProjects(app, expandId = null) {
     topBar([h('strong', {}, isAdmin() ? '所有專案（管理員）' : '專案與規劃')]),
     h('div', { class: 'page-body page-wide' },
       h('div', { class: 'row' },
-        h('button', { class: 'primary', onClick: () => openProjectForm({ onSaved: (id) => { location.hash = `#/p/${id}`; } }) }, '＋ 新建專案'),
-        h('button', { onClick: async () => {
-          try { const id = await runSeed(); if (id) { openId = id; load(); } } catch (e) { toast('初始化失敗：' + e.message, 'error'); }
-        } }, '初始化測試資料（北海道測試）')),
+        h('button', { class: 'primary', onClick: () => openProjectForm({ onSaved: (id) => { location.hash = `#/p/${id}`; } }) }, '＋ 新建專案')),
       layout));
   app.replaceChildren(page);
 
@@ -74,7 +70,10 @@ export async function mountProjects(app, expandId = null) {
         cards.push(card);
         if (isOpen) {
           openCard = card;
-          branch = buildBranch(p, { onDeleted: () => { openId = null; load(); } });
+          branch = buildBranch(p, {
+            onDeleted: () => { openId = null; load(); },
+            onCopied: (newId) => { openId = newId; load(); },   // 管理員複製完成：展開新專案（在目標帳號群組）
+          });
           branch.classList.toggle('narrow', narrow);
           if (narrow) cards.push(branch);   // 窄螢幕：分支放在卡片下方
         }

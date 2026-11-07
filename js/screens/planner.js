@@ -1,6 +1,6 @@
 // 主畫面：左地圖、右上行程流程、右下備用庫；頂部列含存檔狀態、歷史、匯出、專案設定
-import { state, on, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js';
-import { startPlanSession, endPlanSession, listHistory, restoreSnapshot, hasUnsaved, saveNow, updateProject } from '../store.js';
+import { state, on, emit, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js';
+import { startPlanSession, endPlanSession, listHistory, restoreSnapshot, hasUnsaved, saveNow, updateProject, subscribeLibrary } from '../store.js';
 import { initRouteCache, requestRoutes, getRouteInfo } from '../routes.js';
 import { computeSchedule } from '../schedule.js';
 import { createMapView } from '../map-view.js';
@@ -24,6 +24,11 @@ export async function mountPlanner(app, project, planId) {
 
   app.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'muted' }, '載入規劃中…')));
   await Promise.all([initRouteCache(project.id), startPlanSession(project.id, planId)]);
+
+  // 專案備用庫：唯讀即時訂閱（在編輯畫面被修改時，共用清單與地圖跟著更新）
+  state.library = null;
+  state.backupSource = 'plan';
+  const unsubLibrary = subscribeLibrary(project.id, (lib) => { state.library = lib; emit('library'); });
 
   // 舊資料轉換（一次性）：專案還沒有「每日包車時數」表時，依這份規劃舊的每日覆蓋值建立
   if (!Array.isArray(project.charterHoursByDay)) {
@@ -179,10 +184,11 @@ export async function mountPlanner(app, project, planId) {
     window.removeEventListener('beforeunload', beforeUnload);
     document.removeEventListener('keydown', onKey);
     state.selectedStop = null; state.hoverBackup = null;
+    unsubLibrary();
     debouncedRequest.cancel();
     offs.forEach(f => f());
     mapView.destroy(); itinView.destroy(); backupView.destroy();
     await endPlanSession();
-    state.plan = null; state.planId = null; state.refPlan = null;
+    state.plan = null; state.planId = null; state.refPlan = null; state.library = null; state.backupSource = 'plan';
   };
 }

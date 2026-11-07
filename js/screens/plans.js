@@ -1,7 +1,8 @@
 // 規劃分支：在專案列表右側（窄螢幕在專案卡片下方）展開某專案底下的所有規劃
 // 可開啟、複製成新規劃、刪除、開啟新規劃（空白或複製現有）、匯入行程
 import { state, blankPlanData, normalizePlan } from '../state.js';
-import { listPlans, getPlan, createPlan, deletePlan } from '../store.js';
+import { listPlans, getPlan, createPlan, deletePlan, getLibrary } from '../store.js';
+import { LIB_TABS, libraryCounts } from '../library.js';
 import { h, selectEl, fmtDateTime, toast, openModal, confirmDialog, promptDialog, clone, uid } from '../utils.js';
 import { openProjectForm } from './project-form.js';
 import { openImport } from '../import.js';
@@ -40,7 +41,7 @@ async function newPlanDialog(project, plans) {
  * 建立分支區塊
  * 回傳 HTMLElement；資料非同步載入
  */
-export function buildBranch(project, { onDeleted } = {}) {
+export function buildBranch(project, { onDeleted, onCopied } = {}) {
   const list = h('ul', { class: 'branch-list' }, h('li', { class: 'branch-item' }, h('div', { class: 'muted small branch-loading' }, '載入規劃中…')));
   const actions = h('div', { class: 'branch-actions' });
   const el = h('div', { class: 'branch' },
@@ -49,7 +50,19 @@ export function buildBranch(project, { onDeleted } = {}) {
   let plans = [];
   async function load() {
     try {
-      plans = await listPlans(project.id);
+      const [list0, libData] = await Promise.all([listPlans(project.id), getLibrary(project.id).catch(e => { console.warn(e); return null; })]);
+      plans = list0;
+      // 規劃清單上方：專案備用庫節點
+      const counts = libraryCounts(libData);
+      const libNode = h('li', { class: 'branch-item' },
+        h('div', { class: 'card plan-card lib-card', title: '進入專案備用庫（這個專案的所有規劃共用）', onClick: () => {
+          location.hash = `#/lib/${project.id}`;
+        } },
+          h('div', { class: 'plan-card-main' },
+            h('div', { class: 'li-title' }, '📦 專案備用庫'),
+            h('div', { class: 'small muted' }, libData
+              ? LIB_TABS.map(t => `${t.name.replace('備用', '')} ${counts[t.id]}`).join('・')
+              : '讀取失敗'))));
       const items = plans.map(p => h('li', { class: 'branch-item' },
         h('div', { class: 'card plan-card', title: '開啟這份規劃', onClick: (e) => {
           if (e.target.closest('button')) return;
@@ -62,13 +75,13 @@ export function buildBranch(project, { onDeleted } = {}) {
           h('div', { class: 'plan-card-btns' },
             h('button', { class: 'small-btn', title: '複製成新規劃（含備用庫）', onClick: () => copyPlan(p) }, '複製'),
             h('button', { class: 'small-btn danger', title: '刪除規劃', onClick: () => removePlan(p) }, '刪除')))));
-      list.replaceChildren(...(items.length ? items
+      list.replaceChildren(libNode, ...(items.length ? items
         : [h('li', { class: 'branch-item' }, h('div', { class: 'muted small branch-loading' }, '還沒有規劃'))]),
         h('li', { class: 'branch-item branch-add' }, actions));
       actions.replaceChildren(
         h('button', { class: 'primary', onClick: () => newPlanDialog(project, plans) }, '＋ 開啟新規劃'),
-        h('button', { onClick: () => openImport(project) }, '匯入行程'),
-        h('button', { class: 'small-btn', onClick: () => openProjectForm({ project, onSaved: () => location.reload(), onDeleted }) }, '專案設定'));
+        h('button', { onClick: () => openImport(project, { onDone: load }) }, '匯入行程'),
+        h('button', { class: 'small-btn', onClick: () => openProjectForm({ project, onSaved: () => location.reload(), onDeleted, onCopied }) }, '專案設定'));
     } catch (e) {
       list.replaceChildren(h('li', { class: 'branch-item' }, h('div', { class: 'error small' }, '讀取失敗：' + e.message)));
     }

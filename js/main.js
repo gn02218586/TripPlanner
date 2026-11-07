@@ -1,4 +1,4 @@
-// 進入點：檢查設定 → 登入 → 暱稱 → 依網址（#/、#/p/專案、#/p/專案/規劃）切換畫面
+// 進入點：檢查設定 → 登入 → 依網址（#/、#/p/專案、#/p/專案/規劃、#/lib/專案）切換畫面
 import { GOOGLE_MAPS_API_KEY, MAP_ID, firebaseConfig } from '../config.js';
 import { h } from './utils.js';
 
@@ -25,6 +25,7 @@ async function start() {
   const { mountLogin } = await import('./screens/login.js');
   const { mountProjects } = await import('./screens/projects.js');
   const { mountPlanner } = await import('./screens/planner.js');
+  const { mountLibrary } = await import('./screens/library.js');
   const { refreshNickname } = await import('./screens/common.js');
 
   let cleanup = null;
@@ -37,17 +38,27 @@ async function start() {
     if (!state.user) { cleanup = mountLogin(app); return; }
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
     try {
+      // 別的帳號的專案：規則拒絕讀取（permission-denied），與不存在一樣處理
+      const loadProject = (id) => getProject(id).catch(e => {
+        if (e?.code === 'permission-denied') return null;
+        throw e;
+      });
       if (parts[0] === 'p' && parts[1] && parts[2]) {
         // #/p/專案/規劃：地圖畫面
-        // 別的帳號的專案：規則拒絕讀取（permission-denied），與不存在一樣處理
-        const project = await getProject(parts[1]).catch(e => {
-          if (e?.code === 'permission-denied') return null;
-          throw e;
-        });
+        const project = await loadProject(parts[1]);
         if (my !== token) return;
         if (!project) { showNoAccess(); return; }
         state.project = project;
         const c = await mountPlanner(app, project, parts[2]);
+        if (my !== token) { await c(); return; }
+        cleanup = c;
+      } else if (parts[0] === 'lib' && parts[1]) {
+        // #/lib/專案：專案備用庫編輯畫面
+        const project = await loadProject(parts[1]);
+        if (my !== token) return;
+        if (!project) { showNoAccess(); return; }
+        state.project = project;
+        const c = await mountLibrary(app, project);
         if (my !== token) { await c(); return; }
         cleanup = c;
       } else {

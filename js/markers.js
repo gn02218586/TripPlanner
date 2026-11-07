@@ -10,6 +10,8 @@ export function dayColor(i, n) {
 }
 export const BACKUP_COLOR = '#8a8a8a';
 export const REF_COLOR = '#7b3fe4';
+/** 專案備用庫三個頁簽的標記顏色 */
+export const LIB_COLORS = { spot: '#2e9d4f', hotel: '#2f6fd6', food: '#e8710a' };
 
 export const TYPE_GLYPH = { spot: '', food: '🍴', hotel: '', airport: '✈' };
 

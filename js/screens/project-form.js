@@ -1,14 +1,17 @@
 // 建立專案／專案設定：地圖範圍（搜尋區域 viewport 或鎖定目前畫面）、日期、天數與各項預設值
 import { lib } from '../maps-loader.js';
 import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL, deriveCharterTable } from '../state.js';
-import { createProject, updateProject, deleteProject } from '../store.js';
-import { h, selectEl, toast, num, fmtDate, addDays, confirmDialog, promptDialog } from '../utils.js';
+import { createProject, updateProject, deleteProject, copyProjectTo } from '../store.js';
+import { h, selectEl, toast, num, fmtDate, addDays, confirmDialog, promptDialog, openModal } from '../utils.js';
 import { isAdmin, toEmail, accountLabel, ACCOUNT_DOMAIN } from '../accounts.js';
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /**
  * onDeleted：有傳入時顯示「刪除專案」（只在首頁提供；地圖畫面開著規劃時不能刪）
+ * onCopied(newId, ownerEmail)：管理員「複製到其他帳號」完成後呼叫（首頁用來重新載入列表）
  */
-export async function openProjectForm({ project = null, plan = null, onSaved, onDeleted = null }) {
+export async function openProjectForm({ project = null, plan = null, onSaved, onDeleted = null, onCopied = null }) {
   const isNew = !project;
   const admin = isAdmin();
   const canEditBounds = isNew || admin || project.creatorNickname === state.nickname;
@@ -104,7 +107,10 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
     !isNew && admin ? h('fieldset', { class: 'admin-only' },
       h('legend', {}, '擁有帳號（管理員）'),
       h('div', { class: 'small muted' }, `目前：${oldOwner || '未歸屬'}。轉移後只有新的擁有帳號與管理員看得到這個專案。請確認帳號已在 Firebase Authentication 建立。`),
-      ownerIn) : null,
+      ownerIn,
+      h('div', { class: 'row' },
+        h('button', { onClick: openCopyDialog, title: '把整個專案（設定、規劃、專案備用庫、路線快取）複製一份給指定帳號' }, '複製到其他帳號'),
+        h('span', { class: 'small muted' }, '原專案保留不變；歷史快照不複製'))) : null,
     !isNew && onDeleted ? h('fieldset', { class: 'danger-zone' },
       h('legend', {}, '刪除專案'),
       h('div', { class: 'small muted' }, '會一併刪除所有規劃、歷史紀錄、路線快取與專案備用庫，無法復原。'),
@@ -210,7 +216,7 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
     // 管理員轉移擁有帳號：轉移前確認
     if (!isNew && admin) {
       const newOwner = toEmail(ownerIn.value);
-      if (newOwner && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newOwner)) return toast('擁有帳號格式不正確', 'warn');
+      if (newOwner && !EMAIL_RE.test(newOwner)) return toast('擁有帳號格式不正確', 'warn');
       if (newOwner !== oldOwner) {
         const msg = `把專案「${project.name}」的擁有帳號\n從「${oldOwner || '未歸屬'}」轉移給「${newOwner || '未歸屬'}」？\n` +
           (newOwner ? `轉移後只有 ${newOwner} 與管理員看得到這個專案。` : '改為未歸屬後只有管理員看得到這個專案。');
@@ -227,6 +233,51 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
         toast('專案設定已儲存', 'ok'); close(); onSaved?.(project.id, data);
       }
     } catch (e) { toast('儲存失敗：' + e.message, 'error'); }
+  }
+
+  /** 管理員：複製專案到其他帳號（以雲端上的原專案為準；這個視窗尚未儲存的修改不會帶過去） */
+  async function openCopyDialog() {
+    const targetIn = h('input', { type: 'text', class: 'full', placeholder: `帳號名稱，例如 japan2028（自動補 @${ACCOUNT_DOMAIN}）`,
+      autocapitalize: 'off', spellcheck: 'false' });
+    const nameIn = h('input', { type: 'text', class: 'full', value: project.name });
+    const m = openModal({
+      title: '複製專案到其他帳號',
+      body: h('div', {},
+        h('label', { class: 'row col' }, '目標帳號', targetIn),
+        h('label', { class: 'row col' }, '新專案名稱', nameIn),
+        h('div', { class: 'small muted' }, '複製內容：專案設定、所有規劃（含行程點、交通設定、各規劃的備用庫）、專案備用庫、路線快取。歷史快照不複製。目標帳號可以和原帳號相同。')),
+      actions: [{ label: '取消', value: null }, { label: '下一步', value: 'ok', class: 'primary' }],
+    });
+    setTimeout(() => targetIn.focus(), 30);
+    if ((await m.result) !== 'ok') return;
+    const target = toEmail(targetIn.value);
+    const name = nameIn.value.trim() || project.name;
+    if (!target) { toast('請輸入目標帳號', 'warn'); return; }
+    if (!EMAIL_RE.test(target)) { toast('目標帳號格式不正確', 'warn'); return; }
+    const who = accountLabel(target);
+    if (!(await confirmDialog(`把專案「${project.name}」複製一份到 ${who}？原專案保留不變。\n請確認帳號名稱正確，打錯的話只有管理員看得到這份複本`, '複製'))) return;
+
+    // 複製中：顯示進度（不能中途關閉）
+    const progress = h('div', { class: 'copy-progress' }, '準備中…');
+    const pm = openModal({ title: `複製到 ${who}`, body: progress, actions: [], dismissValue: null });
+    // 複製中不能點外面關閉，也不顯示右上角 ✕
+    pm.el.closest('.modal-overlay').addEventListener('mousedown', (ev) => ev.stopImmediatePropagation(), true);
+    pm.el.querySelector('.modal-head .icon-btn')?.remove();
+    try {
+      const newId = await copyProjectTo(project.id, { ownerEmail: target, name }, (t) => { progress.textContent = t; });
+      pm.close();
+      toast(`已複製到 ${who}`, 'ok', 5000);
+      close();   // 關閉專案設定，讓首頁直接看到新專案
+      onCopied?.(newId, target);
+    } catch (e) {
+      console.error(e);
+      progress.replaceChildren(
+        h('p', { class: 'error' }, '複製失敗：' + e.message),
+        e.partialId
+          ? h('p', { class: 'small' }, `已建立一份不完整的複本「${name}」（在首頁 ${who} 群組）。請到該複本的「專案設定」刪除後再重試。`)
+          : h('p', { class: 'small' }, '尚未建立任何資料，可以直接重試。'),
+        h('div', { class: 'row end' }, h('button', { class: 'primary', onClick: () => { pm.close(); if (e.partialId) onCopied?.(e.partialId, target); } }, '關閉')));
+    }
   }
 
   async function removeProject() {

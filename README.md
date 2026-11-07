@@ -31,14 +31,17 @@ TripPlanner/
    ├─ markers.js         標記與圖示（地圖、行程、備用庫共用）
    ├─ map-view.js        地圖畫面
    ├─ itinerary-view.js  行程流程（右上）
-   ├─ backup-view.js     備用庫（右下）與「參考其他規劃」
+   ├─ backup-view.js     備用庫（右下，本規劃／專案共用切換）與「參考其他規劃」
+   ├─ library.js         專案備用庫的資料與操作
+   ├─ library-map.js     專案備用庫編輯畫面的地圖
+   ├─ import.js          匯入行程、匯入專案備用庫
+   ├─ accounts.js        帳號網域與管理員設定
    ├─ ui-common.js       共用小元件
    ├─ dnd.js             SortableJS 拖曳設定
    ├─ export.js          匯出 JSON／純文字
-   ├─ seed.js            種子資料「北海道測試」
    ├─ utils.js           小工具
    └─ screens/
-      ├─ login.js  projects.js  plans.js  planner.js  project-form.js  common.js
+      ├─ login.js  projects.js  plans.js  planner.js  library.js  project-form.js  common.js
 ```
 
 ---
@@ -55,7 +58,7 @@ ES modules 不能用 `file://` 直接開啟，需要一個本機伺服器。
    ```
 
 3. 瀏覽器開啟 <http://localhost:8000/>。
-4. 登入後到「選擇專案」畫面，按「初始化測試資料（北海道測試）」，就會建立範例專案。
+4. 登入後在首頁按「＋ 新建專案」開始規劃。
 
 > 如果 `config.js` 裡還是 `YOUR_...` 這類佔位符，網頁會顯示「尚未設定」。
 
@@ -175,6 +178,9 @@ Advanced Markers（新式標記）需要 Map ID。
    2. 詳細位置：Firebase 主控台 → 選這個專案 → 左側「建構（Build）」→「Firestore Database」→ 上方「規則（Rules）」頁簽 → 把原本內容全部取代 → 按「發布（Publish）」。
    3. 這份規則的效果是：管理員可讀寫全部；一般帳號只能讀寫「擁有帳號」等於自己的專案與其底下所有資料；未登入不能讀寫任何資料。
    4. 不需要安裝 firebase CLI，也不需要 `firebase.json`。
+9. （建議）限制 Firebase 的 API 金鑰：
+   1. 到 Google Cloud「憑證」頁，找到 Firebase 自動建立的 Browser key。
+   2. 加上 HTTP 網址限制：`localhost` 與 GitHub Pages 網址，另外加上 `你的專案ID.firebaseapp.com/*`。
 10. （建議）**關閉自行註冊**：到「Authentication → 設定 → 使用者動作（User actions）」，取消勾選「啟用建立（註冊）」，只讓你在後台建立的帳號能登入。
 
 ### 多帳號與管理員
@@ -185,15 +191,16 @@ Advanced Markers（新式標記）需要 Map ID。
 - **管理員**：帳號設定在 `js/accounts.js` 的 `ADMIN_EMAIL`，`firestore.rules` 的 `isAdmin()` 也寫了同一個 Email，**換管理員時兩處都要改**，規則要重新發布。
   - 首頁依擁有帳號分組顯示全部專案，可展開收合；沒有擁有帳號的舊專案歸在「未歸屬」，只有管理員看得到。
   - 在「專案設定」的「擁有帳號」欄位可以指定或轉移（輸入 `hokkaido` 自動補成 `hokkaido@tripplanner.app`），轉移前會確認。
+  - 「擁有帳號」旁的「複製到其他帳號」：把整個專案複製一份給指定帳號（可以和原帳號相同），原專案不變。
+    複製內容是專案設定、所有規劃（行程點、交通設定、各規劃的備用庫，保留原本的建立者／最後修改）、專案備用庫、路線快取；歷史快照不複製。
+    新專案的建立者是管理員的暱稱、建立時間是現在。中途失敗時，到目標帳號群組刪除不完整的複本後重試。
 - **刪除專案**：在首頁分支圖的「專案設定」最下方。會先刪除所有規劃（含歷史）、路線快取與專案備用庫，最後才刪專案本身。
+  刪除與複製要處理的子集合列在 `js/store.js` 的 `PROJECT_SUBCOLLECTIONS`，之後新增子集合時要加進去。
 - **從單一共用帳號改成多帳號的順序**：
   1. 在 Authentication 建立管理員與各團帳號。
   2. 上傳新版程式（舊規則下新程式也能運作）。
   3. 用管理員登入，把「未歸屬」的專案轉給對應帳號。
   4. 最後才發布新的 `firestore.rules`。如果先發布，轉移前一般帳號看不到任何專案。
-9. （建議）限制 Firebase 的 API 金鑰：
-   1. 到 Google Cloud「憑證」頁，找到 Firebase 自動建立的 Browser key。
-   2. 加上 HTTP 網址限制：`localhost` 與 GitHub Pages 網址，另外加上 `你的專案ID.firebaseapp.com/*`。
 
 ### 資料結構（Firestore）
 ```
@@ -206,6 +213,8 @@ projects/{projectId}/plans/{planId}
   name, creator, lastEditor, updatedAt, version, lastSessionId, days[], backup{tabs[]}
 projects/{projectId}/plans/{planId}/history/{autoId}
   savedAt, editor, snapshot{days, backup}
+projects/{projectId}/library/main         專案備用庫（該專案所有規劃共用）
+  tabs[{id: spot|hotel|food, name, type, items[]}], version, updatedAt, lastEditor, lastSessionId
 ```
 
 ---
@@ -271,3 +280,22 @@ projects/{projectId}/plans/{planId}/history/{autoId}
 - 「歷史」可以一鍵還原最近 20 筆快照。
 
 **匯出**：可以匯出 JSON 或純文字行程表，支援複製與下載。
+
+**專案備用庫**（每個專案一份，該專案的所有規劃共用；原本每個規劃自己的備用庫仍保留）：
+- 首頁點專案後，分支圖最上方的「📦 專案備用庫」顯示各頁簽點數，點下去進入編輯畫面。
+- 編輯畫面左邊地圖顯示所有點（景點綠、住宿藍、餐廳橘），右邊是三個頁簽：備用景點、備用住宿、備用餐廳。
+  - 用上方搜尋或點地圖加入；清單上可改停留分鐘、備註，✕ 刪除。
+  - 拖拉排序，拖到上方頁簽可移過去；點清單項目時地圖標記放大（不縮放地圖）。
+  - 「匯入」：格式如下，先預覽新增幾筆、哪些搜尋不到，再選「加到現有」（重複的略過）或「取代全部」。
+
+  ```
+  # 「#」開頭為註解；備註以「⚠」開頭表示需確認
+  [備用景點]
+  顯示名稱 | 搜尋字 | 停留分鐘 | 備註
+  [備用住宿]
+  ...
+  [備用餐廳]
+  ...
+  ```
+- 規劃畫面右下的備用庫可切換「本規劃｜專案共用」。專案共用的點拖進行程是複製（共用庫保留原點），已排入這份規劃的點顯示「已排入 Dn」；滑鼠停 0.5 秒同樣顯示與選取點的路線比較。
+- 「匯入行程」的文字也可以加入 [備用景點] 等段落，預覽時選擇放到「本規劃備用庫」或「專案備用庫」（加到現有）。只有備用段落並選專案備用庫時，不會建立規劃。

@@ -1,9 +1,10 @@
-// 右下：備用庫（頁簽式，屬於目前規劃）＋「參考其他規劃」
+// 右下：備用庫（頁簽式）——切換「本規劃｜專案共用」；本規劃可編輯，專案共用只能拖進行程（複製）＋「參考其他規劃」
 import {
   state, on, emit, mutate, HOTEL_TAB_KIND, scheduledDays, addBackupItem, makeBackupItem,
   findBackup,
 } from './state.js';
-import { typeIcon, BACKUP_COLOR, REF_COLOR, compareNodes } from './markers.js';
+import { typeIcon, BACKUP_COLOR, REF_COLOR, LIB_COLORS, compareNodes } from './markers.js';
+import { findLibItem } from './library.js';
 import { h, selectEl, uid, confirmDialog, promptDialog, toast, samePlace, fmtDateTime } from './utils.js';
 import { requestCompare, compareInfo } from './compare.js';
 import { confirmRemoveBackup } from './ui-common.js';
@@ -30,11 +31,30 @@ export function createBackupView(container, { mapView, onToggleCollapse }) {
   });
 
   const hasPlace =(it) => state.plan.backup.tabs.some(t => t.items.some(x => samePlace(x, it)));
+  /** 依來源找點：'plan'＝本規劃備用庫、'lib'＝專案共用 */
+  const findAny = (id, src) => (src === 'lib' ? findLibItem(id) : findBackup(id));
+
+  /** 「本規劃｜專案共用」切換 */
+  function sourceSwitch() {
+    const btn = (v, label, title) => h('button', {
+      class: 'seg-btn' + (state.backupSource === v ? ' active' : ''), title,
+      onClick: () => { if (state.backupSource === v) return; state.backupSource = v; render(); emit('backupView'); },
+    }, label);
+    return h('div', { class: 'seg' },
+      btn('plan', '本規劃', '只屬於這份規劃的備用庫'),
+      btn('lib', '專案共用', '專案備用庫：這個專案的所有規劃共用'));
+  }
+  const collapseBtn = () => h('button', { class: 'collapse-btn', title: collapsed ? '展開備用庫' : '收起備用庫', onClick: () => {
+    collapsed = !collapsed; onToggleCollapse(collapsed); render();
+  } }, collapsed ? '▲ 展開' : '▼ 收起');
+  const showOnMapCb = () => h('label', { class: 'small', title: '在地圖上以小標記顯示目前頁簽的備用點' },
+    h('input', { type: 'checkbox', checked: state.showBackupOnMap, onChange: (e) => { state.showBackupOnMap = e.target.checked; emit('backupView'); } }), '地圖顯示備用點');
 
   function render() {
     hoverEnd();   // 清單重建時一併清掉暫時標記，避免殘留
     sortables.forEach(s => s.destroy());
     sortables = [];
+    if (state.backupSource === 'lib') { renderLib(); return; }
     const tabs = state.plan.backup.tabs;
     const active = tabs.find(t => t.id === state.activeTab) || tabs[0];
     state.activeTab = active.id;
@@ -54,14 +74,11 @@ export function createBackupView(container, { mapView, onToggleCollapse }) {
     });
 
     head.replaceChildren(
-      h('div', { class: 'tabs' }, ...tabBtns,
+      h('div', { class: 'tabs' }, sourceSwitch(), ...tabBtns,
         h('button', { class: 'icon-btn', title: '新增頁簽', onClick: addTab }, '＋'),
-        h('button', { class: 'collapse-btn', title: collapsed ? '展開備用庫' : '收起備用庫', onClick: () => {
-          collapsed = !collapsed; onToggleCollapse(collapsed); render();
-        } }, collapsed ? '▲ 展開' : '▼ 收起')),
+        collapseBtn()),
       h('div', { class: 'backup-tools' },
-        h('label', { class: 'small', title: '在地圖上以灰色小標記顯示目前頁簽的備用點' },
-          h('input', { type: 'checkbox', checked: state.showBackupOnMap, onChange: (e) => { state.showBackupOnMap = e.target.checked; emit('backupView'); } }), '地圖顯示備用點'),
+        showOnMapCb(),
         h('button', { class: 'small-btn', onClick: openReference }, '參考其他規劃')),
     );
 
@@ -70,7 +87,7 @@ export function createBackupView(container, { mapView, onToggleCollapse }) {
         const days = scheduledDays(it);
         return h('li', {
           class: 'bitem', dataset: { id: it.id }, title: '拖到行程可加入（備用庫保留）',
-          onMouseenter: (e) => hoverStart(it.id, e.currentTarget),
+          onMouseenter: (e) => hoverStart(it.id, e.currentTarget, 'plan'),
           onMouseleave: () => hoverEnd(),
         },
           typeIcon(it.type, BACKUP_COLOR),
@@ -88,21 +105,65 @@ export function createBackupView(container, { mapView, onToggleCollapse }) {
     if (!active.items.length) body.append(h('div', { class: 'empty-hint' }, '這個頁簽還沒有地點；可從行程拖過來，或搜尋／點地圖加入'));
   }
 
+  // ---------- 專案共用（唯讀；拖進行程＝複製） ----------
+  function renderLib() {
+    const lib = state.library;
+    if (!lib) {
+      head.replaceChildren(h('div', { class: 'tabs' }, sourceSwitch(), collapseBtn()));
+      body.replaceChildren(h('div', { class: 'empty-hint' }, '專案備用庫載入中…'));
+      return;
+    }
+    const active = lib.tabs.find(t => t.id === state.libTab) || lib.tabs[0];
+    state.libTab = active.id;
+    head.replaceChildren(
+      h('div', { class: 'tabs' }, sourceSwitch(),
+        ...lib.tabs.map(t => h('div', {
+          class: 'tab lib-tab' + (t.id === active.id ? ' active' : ''), style: { '--c': LIB_COLORS[t.id] },
+          onClick: () => { if (state.libTab !== t.id) { state.libTab = t.id; render(); emit('backupView'); } },
+        }, h('span', { class: 'tab-name' }, `${t.name}（${t.items.length}）`))),
+        collapseBtn()),
+      h('div', { class: 'backup-tools' },
+        showOnMapCb(),
+        h('a', { class: 'small-btn', href: `#/lib/${state.project.id}`, title: '到專案備用庫編輯畫面新增、修改、排序' }, '編輯專案備用庫')),
+    );
+    const ul = h('ul', { class: 'backup-list', dataset: { kind: 'libbackup', tab: active.id } },
+      active.items.map(it => {
+        const days = scheduledDays(it);
+        return h('li', {
+          class: 'bitem', dataset: { id: it.id }, title: '拖到行程可加入（專案備用庫保留原點）',
+          onMouseenter: (e) => hoverStart(it.id, e.currentTarget, 'lib'),
+          onMouseleave: () => hoverEnd(),
+        },
+          typeIcon(it.type, LIB_COLORS[active.id]),
+          h('a', { href: '#', class: 'bname', onClick: (e) => { e.preventDefault(); mapView.focusLibItem(it.id); } }, it.name),
+          it.type !== 'hotel' ? h('span', { class: 'small muted' }, `${it.stayMin ?? 0} 分`) : null,
+          days.length ? h('span', { class: 'tag' }, `已排入 ${days.map(d => 'D' + d).join('、')}`) : null,
+          it.note ? h('span', { class: 'small bnote' + (it.note.startsWith('⚠') ? ' warn' : ' muted'), title: it.note }, it.note) : null);
+      }));
+    sortables.push(makeSortable(ul, {
+      // 只能拖進行程，而且是複製；共用清單本身不能排序也不能放入
+      group: { name: 'tp', pull: (to) => (to.el.dataset.kind === 'trip' ? 'clone' : false), put: false },
+      sort: false,
+    }));
+    body.replaceChildren(ul);
+    if (!active.items.length) body.append(h('div', { class: 'empty-hint' }, '這個頁簽還沒有地點；請到「編輯專案備用庫」新增或匯入'));
+  }
+
   // ---------- 滑鼠停留 0.5 秒：地圖暫時顯示＋與選取的行程點比較 ----------
   const HOVER_DELAY = 500;
   let hoverTimer = null;
-  let hoverRow = null;   // { id, li, box }
+  let hoverRow = null;   // { id, src, li, box }
 
-  function hoverStart(itemId, li) {
+  function hoverStart(itemId, li, src) {
     hoverEnd();
     hoverTimer = setTimeout(() => {
       hoverTimer = null;
-      const f = findBackup(itemId);
+      const f = findAny(itemId, src);
       if (!f) return;
-      state.hoverBackup = { ...f.item };
+      state.hoverBackup = { ...f.item, src };
       emit('backupHover');
       const box = h('div', { class: 'bcompare' });
-      hoverRow = { id: itemId, li, box };
+      hoverRow = { id: itemId, src, li, box };
       li.append(box);
       requestCompare(f.item);
       renderCompare();
@@ -118,7 +179,7 @@ export function createBackupView(container, { mapView, onToggleCollapse }) {
 
   function renderCompare() {
     if (!hoverRow) return;
-    const it = findBackup(hoverRow.id)?.item;
+    const it = findAny(hoverRow.id, hoverRow.src)?.item;
     const c = compareInfo(it);
     if (!c) { hoverRow.box.remove(); return; }   // 沒有選取點：只在地圖顯示位置
     hoverRow.box.replaceChildren(...compareNodes(c));
@@ -221,9 +282,11 @@ export function createBackupView(container, { mapView, onToggleCollapse }) {
 
   offs.push(on('plan', () => { render(); if (refPanel) renderRef(refPanel.querySelector('.ref-content')); }));
   offs.push(on('routes', renderCompare));
+  // 專案共用有變動（別人在編輯畫面修改）：顯示共用清單時重繪
+  offs.push(on('library', () => { if (state.backupSource === 'lib') render(); }));
   offs.push(on('stopSelect', () => {
     if (!hoverRow) return;
-    const it = findBackup(hoverRow.id)?.item;
+    const it = findAny(hoverRow.id, hoverRow.src)?.item;
     if (it) requestCompare(it);
     renderCompare();
   }));

@@ -14,6 +14,11 @@ export const state = {
   selectedStartOf: null,  // 從起點列選取時：那一天的 index
   hoverBackup: null,      // 滑鼠停留中的備用點（暫時顯示在地圖上）
   refPlan: null,      // 參考中的其他規劃 { id, name, backup }
+  // 專案備用庫（library.js）
+  library: null,          // { tabs:[{id,name,type,items}] }；規劃畫面為唯讀訂閱，編輯畫面可修改
+  backupSource: 'plan',   // 規劃畫面右下備用庫：'plan'＝本規劃、'lib'＝專案共用
+  libTab: 'spot',         // 專案共用目前頁簽
+  libSelected: null,      // 編輯畫面選取的共用點 id
 };
 
 const listeners = {};
@@ -115,7 +120,8 @@ export function normalizePlan(plan, project) {
   if (plan === state.plan) {
     if (!plan.backup.tabs.some(t => t.id === state.activeTab)) state.activeTab = plan.backup.tabs[0].id;
     if (state.selectedStop && !findStop(state.selectedStop, plan)) { state.selectedStop = null; state.selectedStartOf = null; }
-    if (state.hoverBackup && !findBackup(state.hoverBackup.id, plan)) state.hoverBackup = null;
+    // 滑鼠停留中的點：本規劃備用點被刪除時清掉（專案共用點 src='lib' 不在規劃內，不檢查）
+    if (state.hoverBackup && state.hoverBackup.src !== 'lib' && !findBackup(state.hoverBackup.id, plan)) state.hoverBackup = null;
   }
 }
 

@@ -392,3 +392,28 @@ input.day-time { padding: 1px 4px; font-size: 12px; }
 .danger-zone { border-color: #f1b8b3; }
 .danger-zone legend { color: var(--danger); }
 .login-card label.row.col { gap: 4px; }
+
+/* ---------- 專案備用庫 ---------- */
+/* 規劃畫面：本規劃｜專案共用 切換 */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin: 0 6px 3px 0; align-self: center; }
+.seg-btn { border: none; border-radius: 0; padding: 2px 8px; font-size: 12px; background: #fff; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+.seg-btn.active { background: var(--primary); color: #fff; }
+.lib-tab { border-top: 3px solid var(--c); }
+.bnote { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 首頁分支：專案備用庫節點 */
+.lib-card { background: #f6fbf7; border-style: dashed; }
+/* 編輯畫面：右側整欄是備用庫 */
+.lib-side .lib-toolbar { padding: 8px 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.lib-side .lib-backup { flex: 1; height: auto; }
+.lib-row { cursor: grab; flex-wrap: nowrap; }
+.lib-row.selected { background: #eef4ff; box-shadow: inset 3px 0 0 var(--primary); }
+.lib-row .bname { flex: 0 1 auto; min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-stay { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.lib-stay input.num { width: 56px; padding: 2px 4px; }
+.lib-note { flex: 1 1 120px; min-width: 60px; padding: 2px 6px; font-size: 12px; }
+.lib-note.warn { color: var(--warn); background: var(--warn-bg); }
+/* 匯入 */
+.ip-target { gap: 10px; flex-wrap: wrap; padding: 4px 0; }
+.import-summary { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; font-size: 13px; }
+.copy-progress { min-width: 260px; padding: 8px 0; }

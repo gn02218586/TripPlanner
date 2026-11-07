@@ -1,8 +1,10 @@
 // 拖曳（SortableJS）共用設定與放開後的處理
-// 清單種類（data-kind）：trip＝某天行程、backup＝目前頁簽內容、tabdrop＝頁簽按鈕（拖到別的頁簽）
+// 清單種類（data-kind）：trip＝某天行程、backup＝目前頁簽內容、tabdrop＝頁簽按鈕（拖到別的頁簽）、
+// libbackup＝專案共用備用庫（只能拖進行程，複製）
 import {
   state, emit, moveStop, backupToTrip, stopToBackup, moveBackupItem,
 } from './state.js';
+import { libToTrip } from './library.js';
 
 export function handleDragEnd(evt) {
   const fromK = evt.from.dataset.kind;
@@ -17,6 +19,7 @@ export function handleDragEnd(evt) {
     else if (fromK === 'trip' && toK === 'tabdrop') stopToBackup(id, evt.to.dataset.tab);
     else if (fromK === 'backup' && toK === 'backup') moveBackupItem(id, state.activeTab, idx);
     else if (fromK === 'backup' && toK === 'tabdrop') moveBackupItem(id, evt.to.dataset.tab);
+    else if (fromK === 'libbackup' && toK === 'trip') libToTrip(id, +evt.to.dataset.day, idx);   // 共用庫保留原點
     else emit('plan');
   }, 0);
 }
