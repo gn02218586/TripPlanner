@@ -25,7 +25,7 @@ async function start() {
   const { mountLogin } = await import('./screens/login.js');
   const { mountProjects } = await import('./screens/projects.js');
   const { mountPlanner } = await import('./screens/planner.js');
-  const { ensureNickname } = await import('./screens/common.js');
+  const { refreshNickname } = await import('./screens/common.js');
 
   let cleanup = null;
   let token = 0;
@@ -39,9 +39,13 @@ async function start() {
     try {
       if (parts[0] === 'p' && parts[1] && parts[2]) {
         // #/p/專案/規劃：地圖畫面
-        const project = await getProject(parts[1]);
+        // 別的帳號的專案：規則拒絕讀取（permission-denied），與不存在一樣處理
+        const project = await getProject(parts[1]).catch(e => {
+          if (e?.code === 'permission-denied') return null;
+          throw e;
+        });
         if (my !== token) return;
-        if (!project) { location.hash = '#/'; return; }
+        if (!project) { showNoAccess(); return; }
         state.project = project;
         const c = await mountPlanner(app, project, parts[2]);
         if (my !== token) { await c(); return; }
@@ -60,10 +64,15 @@ async function start() {
     }
   }
 
+  function showNoAccess() {
+    app.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'card' },
+      h('p', { class: 'error' }, '沒有權限或專案不存在'), h('a', { href: '#/' }, '回專案列表'))));
+  }
+
   window.addEventListener('hashchange', route);
   onAuthStateChanged(auth, async (user) => {
     state.user = user;
-    if (user) await ensureNickname();
+    if (user) refreshNickname();   // 暱稱：這台瀏覽器存的 → 帳號名稱
     route();
   });
 }

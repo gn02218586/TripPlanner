@@ -1,11 +1,49 @@
 rules_version = '2';
 
-// 行程規劃地圖：只要登入（共用帳號）就能讀寫；未登入不能讀寫任何資料。
-// 部署方式：Firebase 主控台 → Firestore Database → 規則 → 貼上本檔內容 → 發布。
+// 行程規劃地圖：多帳號權限
+// - 管理員可讀寫全部資料
+// - 一般帳號只能讀寫 ownerEmail 等於自己 Email 的專案，以及該專案底下的所有子集合
+// - 沒有 ownerEmail 的專案（未歸屬）只有管理員能存取
+// ※ 管理員 Email 也寫在 js/accounts.js 的 ADMIN_EMAIL，修改時兩處要一致
+// ※ 子集合用 get() 讀上層專案（寫入前的狀態）：程式一律先建立專案、刪除時最後才刪專案
+// 部署方式：Firebase 主控台 → 建構 → Firestore Database → 規則 → 全部取代成本檔內容 → 發布
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email != null;
     }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function isAdmin() {
+      return signedIn() && myEmail() == 'gn02218586@tripplanner.app';
+    }
+    // 某份專案資料的擁有帳號是不是自己
+    // - 直接比對 data.ownerEmail，讓「where ownerEmail == 自己」的查詢能通過規則檢查
+    // - 沒有 ownerEmail 的專案（未歸屬）讀欄位會出錯，規則視為不成立＝拒絕
+    function ownsData(data) {
+      return signedIn() && data.ownerEmail == myEmail();
+    }
+    // 子集合：檢查上層專案的擁有帳號
+    function ownsProject(pid) {
+      return ownsData(get(/databases/$(database)/documents/projects/$(pid)).data);
+    }
+
+    match /projects/{pid} {
+      allow read: if isAdmin() || ownsData(resource.data);
+      // 建立：擁有帳號必須是自己
+      allow create: if isAdmin() || ownsData(request.resource.data);
+      // 修改：一般帳號不能把專案轉給別人（修改前後的擁有帳號都必須是自己）
+      allow update: if isAdmin() || (ownsData(resource.data) && ownsData(request.resource.data));
+      allow delete: if isAdmin() || ownsData(resource.data);
+
+      // 規劃（含歷史快照）、路線快取、專案備用庫等所有子集合
+      match /{sub=**} {
+        allow read, write: if isAdmin() || ownsProject(pid);
+      }
+    }
+
+    // 其他路徑一律拒絕
   }
 }

@@ -5,6 +5,7 @@ import {
 } from './firebase.js';
 import { state, emit, on, normalizePlan } from './state.js';
 import { debounce, clone, uid, toast, choose, fmtDateTime } from './utils.js';
+import { isAdmin, currentEmail } from './accounts.js';
 
 const SESSION_ID = uid();          // 用來分辨「自己存的」與「別人存的」
 const SAVE_DEBOUNCE = 2000;
@@ -18,24 +19,71 @@ const historyCol = (pid, planId) => collection(db, 'projects', pid, 'plans', pla
 const routeCol = (pid) => collection(db, 'projects', pid, 'routeCache');
 
 // ---------- 專案 ----------
+// 權限（firestore.rules）：一般帳號只能存取 ownerEmail 等於自己的專案與其子集合；管理員可存取全部。
+// 規則要求查詢條件本身就保證權限，所以一般帳號必須用 where('ownerEmail', '==', 自己) 查詢，不能讀全部再過濾。
+// 子集合的規則用 get() 讀上層專案（讀到的是寫入前的狀態），因此「建立專案」一定要先完成，
+// 再另外寫入規劃等子集合；不要把建立專案與子集合放進同一個 batch／transaction。
+
+/** 目前帳號可見的專案：管理員＝全部；一般帳號＝自己擁有的 */
 export async function listProjects() {
-  const snap = await getDocs(projectsCol());
+  const q = isAdmin() ? projectsCol() : query(projectsCol(), where('ownerEmail', '==', currentEmail()));
+  const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 export async function getProject(id) {
   const s = await getDoc(doc(db, 'projects', id));
   return s.exists() ? { id: s.id, ...s.data() } : null;
 }
+/** 在自己擁有的專案中找同名專案（管理員也只查自己擁有的，避免與其他帳號的專案混淆） */
 export async function findProjectByName(name) {
-  const snap = await getDocs(query(projectsCol(), where('name', '==', name)));
+  const snap = await getDocs(query(projectsCol(), where('ownerEmail', '==', currentEmail()), where('name', '==', name)));
   return snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
 }
+/** 建立專案：擁有帳號一律是目前登入的帳號（等伺服器確認後才回傳，之後才能寫子集合） */
 export async function createProject(data) {
-  const ref = await addDoc(projectsCol(), { ...clone(data), createdAt: Date.now() });
+  const ref = await addDoc(projectsCol(), { ...clone(data), ownerEmail: currentEmail(), createdAt: Date.now() });
   return ref.id;
 }
 export async function updateProject(id, data) {
   await updateDoc(doc(db, 'projects', id), clone(data));
+}
+
+/**
+ * 專案底下的子集合（Firestore 前端無法列出子集合，新增子集合時要加在這裡，刪除專案才會一併清掉）
+ * plans 底下另有 history，於刪除每個規劃時處理
+ */
+const PROJECT_SUBCOLLECTIONS = ['routeCache', 'library'];
+const BATCH_MAX = 400;   // 每個 batch 最多 500 筆，保守一點
+
+async function deleteRefs(refs) {
+  for (let i = 0; i < refs.length; i += BATCH_MAX) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + BATCH_MAX).forEach(r => batch.delete(r));
+    await batch.commit();
+  }
+}
+
+/**
+ * 刪除專案：先刪所有子集合文件，最後才刪專案本身
+ * （子集合的權限要靠上層專案的 ownerEmail 判斷，專案先刪掉的話子集合就再也刪不掉）
+ * onProgress(text)：進度文字
+ */
+export async function deleteProject(pid, onProgress = () => {}) {
+  const plans = await getDocs(plansCol(pid));
+  let n = 0;
+  for (const p of plans.docs) {
+    onProgress(`刪除規劃 ${++n} / ${plans.size}…`);
+    const hs = await getDocs(historyCol(pid, p.id));
+    await deleteRefs(hs.docs.map(d => d.ref));   // 規劃的歷史快照
+    await deleteDoc(p.ref);                       // 規劃本身
+  }
+  for (const name of PROJECT_SUBCOLLECTIONS) {
+    onProgress(`清除${name === 'routeCache' ? '路線快取' : '其他資料'}…`);
+    const snap = await getDocs(collection(db, 'projects', pid, name));
+    await deleteRefs(snap.docs.map(d => d.ref));
+  }
+  onProgress('刪除專案…');
+  await deleteDoc(doc(db, 'projects', pid));     // 最後才刪專案
 }
 
 // ---------- 規劃 ----------

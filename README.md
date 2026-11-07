@@ -5,7 +5,7 @@ TripPlanner 是一個純前端的靜態網站，用來在地圖上規劃多天�
 - 介面：純 HTML、CSS、JavaScript（ES modules），不需要 build 工具，可以直接放在 GitHub Pages。
 - 地圖：Google Maps JavaScript API。
 - 資料：Firebase（Authentication 與 Firestore）。
-- 共用：大家用同一組帳號登入。同一份規劃可以多人同時編輯，有即時同步、存檔衝突保護和歷史快照。
+- 帳號：一個帳號代表一團人，每個帳號只看得到自己的專案；管理員帳號可以看到全部。同一份規劃可以多人同時編輯，有即時同步、存檔衝突保護和歷史快照。
 
 > 本 README 提到的專案資料夾一律稱為 **TripPlanner**。
 
@@ -162,7 +162,9 @@ Advanced Markers（新式標記）需要 Map ID。
 2. 進入「專案設定 → 一般 → 你的應用程式」，按 `</>`（網頁）註冊一個應用程式，不需要 Firebase Hosting。
 3. 把畫面上的 `firebaseConfig` 內容填進 `config.js`。
 4. **開啟 Email/密碼登入**：到「Authentication → 登入方式（Sign-in method）」，啟用「電子郵件/密碼」。
-5. **建立共用帳號**：到「Authentication → 使用者 → 新增使用者」，輸入一組 Email 與密碼，分享給一起規劃的人。
+5. **建立帳號**：到「Authentication → 使用者 → 新增使用者」建立帳號（詳見下方「多帳號與管理員」）。
+   - **第一個先建立管理員帳號** `gn02218586@tripplanner.app`。Email 登入不會驗證信箱，管理員帳號沒先建立的話，別人可以搶先註冊成這個 Email。
+   - 每一團建立一個帳號，例如 `japan2028@tripplanner.app`，把帳號名稱（`japan2028`）與密碼分享給該團的人。
 6. **授權網域**：到「Authentication → 設定 → 已授權的網域」，加入 `你的GitHub帳號.github.io`。`localhost` 預設已在清單中。
 7. **建立 Firestore**：
    1. 到「Firestore Database → 建立資料庫」。
@@ -170,8 +172,25 @@ Advanced Markers（新式標記）需要 Map ID。
    3. 模式選「正式版模式（production mode）」。
 8. **貼上規則**：
    1. 到「Firestore Database → 規則」，把 TripPlanner 資料夾裡 `firestore.rules` 的內容整段貼上，按「發布」。
-   2. 這份規則的效果是：未登入不能讀寫任何資料。
-   3. 不需要安裝 firebase CLI，也不需要 `firebase.json`。
+   2. 詳細位置：Firebase 主控台 → 選這個專案 → 左側「建構（Build）」→「Firestore Database」→ 上方「規則（Rules）」頁簽 → 把原本內容全部取代 → 按「發布（Publish）」。
+   3. 這份規則的效果是：管理員可讀寫全部；一般帳號只能讀寫「擁有帳號」等於自己的專案與其底下所有資料；未登入不能讀寫任何資料。
+   4. 不需要安裝 firebase CLI，也不需要 `firebase.json`。
+10. （建議）**關閉自行註冊**：到「Authentication → 設定 → 使用者動作（User actions）」，取消勾選「啟用建立（註冊）」，只讓你在後台建立的帳號能登入。
+
+### 多帳號與管理員
+
+- **登入**：帳號欄位輸入 `japan2028` 會自動補成 `japan2028@tripplanner.app`；輸入含「@」的帳號（例如 `tripplanner@example.com`）則照原樣登入。
+- **暱稱**：登入畫面可選填暱稱，存在這台電腦的瀏覽器，用來顯示「建立者／最後修改」；沒填就顯示帳號名稱（@ 前面那段）。點右上角 👤 可以修改。
+- **專案歸屬**：每個專案記錄「擁有帳號」（`ownerEmail`，小寫），建立專案時自動填入目前帳號。一般帳號只看得到、也只能讀寫自己擁有的專案（含規劃、歷史、路線快取、專案備用庫）。
+- **管理員**：帳號設定在 `js/accounts.js` 的 `ADMIN_EMAIL`，`firestore.rules` 的 `isAdmin()` 也寫了同一個 Email，**換管理員時兩處都要改**，規則要重新發布。
+  - 首頁依擁有帳號分組顯示全部專案，可展開收合；沒有擁有帳號的舊專案歸在「未歸屬」，只有管理員看得到。
+  - 在「專案設定」的「擁有帳號」欄位可以指定或轉移（輸入 `hokkaido` 自動補成 `hokkaido@tripplanner.app`），轉移前會確認。
+- **刪除專案**：在首頁分支圖的「專案設定」最下方。會先刪除所有規劃（含歷史）、路線快取與專案備用庫，最後才刪專案本身。
+- **從單一共用帳號改成多帳號的順序**：
+  1. 在 Authentication 建立管理員與各團帳號。
+  2. 上傳新版程式（舊規則下新程式也能運作）。
+  3. 用管理員登入，把「未歸屬」的專案轉給對應帳號。
+  4. 最後才發布新的 `firestore.rules`。如果先發布，轉移前一般帳號看不到任何專案。
 9. （建議）限制 Firebase 的 API 金鑰：
    1. 到 Google Cloud「憑證」頁，找到 Firebase 自動建立的 Browser key。
    2. 加上 HTTP 網址限制：`localhost` 與 GitHub Pages 網址，另外加上 `你的專案ID.firebaseapp.com/*`。
@@ -179,7 +198,7 @@ Advanced Markers（新式標記）需要 Map ID。
 ### 資料結構（Firestore）
 ```
 projects/{projectId}
-  name, creatorNickname, bounds{n,s,e,w}, startDate, numDays, defaultMode, winterFactor,
+  name, ownerEmail（擁有帳號，小寫）, creatorNickname, bounds{n,s,e,w}, startDate, numDays, defaultMode, winterFactor,
   defaultCharterHours, latestEndTime, defaultStart{點}, defaultEnd{點}, createdAt
 projects/{projectId}/routeCache/{key}     key = 起點lat,lng_終點lat,lng_交通方式（6 位小數）
   distanceMeters, durationSec, noRoute, path（encoded polyline）, createdAt
@@ -225,7 +244,7 @@ projects/{projectId}/plans/{planId}/history/{autoId}
 
 ## 使用說明
 
-**進站流程**：登入共用帳號 → 輸入暱稱（只需第一次）→ 在專案列表點選專案，右側展開該專案的規劃分支 → 點規劃進入主畫面。
+**進站流程**：輸入帳號、密碼（暱稱選填）登入 → 在專案列表點選專案，右側展開該專案的規劃分支 → 點規劃進入主畫面。
 
 **主畫面配置**：左邊是地圖，右上是行程流程，右下是備用庫。中間的分隔線可以拖動調整大小，▾ 可以收起備用庫。
 

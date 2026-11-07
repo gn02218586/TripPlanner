@@ -40,7 +40,7 @@ async function newPlanDialog(project, plans) {
  * 建立分支區塊
  * 回傳 HTMLElement；資料非同步載入
  */
-export function buildBranch(project) {
+export function buildBranch(project, { onDeleted } = {}) {
   const list = h('ul', { class: 'branch-list' }, h('li', { class: 'branch-item' }, h('div', { class: 'muted small branch-loading' }, '載入規劃中…')));
   const actions = h('div', { class: 'branch-actions' });
   const el = h('div', { class: 'branch' },
@@ -68,7 +68,7 @@ export function buildBranch(project) {
       actions.replaceChildren(
         h('button', { class: 'primary', onClick: () => newPlanDialog(project, plans) }, '＋ 開啟新規劃'),
         h('button', { onClick: () => openImport(project) }, '匯入行程'),
-        h('button', { class: 'small-btn', onClick: () => openProjectForm({ project, onSaved: () => location.reload() }) }, '專案設定'));
+        h('button', { class: 'small-btn', onClick: () => openProjectForm({ project, onSaved: () => location.reload(), onDeleted }) }, '專案設定'));
     } catch (e) {
       list.replaceChildren(h('li', { class: 'branch-item' }, h('div', { class: 'error small' }, '讀取失敗：' + e.message)));
     }

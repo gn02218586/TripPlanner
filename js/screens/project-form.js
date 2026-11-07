@@ -1,12 +1,21 @@
 // 建立專案／專案設定：地圖範圍（搜尋區域 viewport 或鎖定目前畫面）、日期、天數與各項預設值
 import { lib } from '../maps-loader.js';
 import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL, deriveCharterTable } from '../state.js';
-import { createProject, updateProject } from '../store.js';
-import { h, selectEl, toast, num, fmtDate, addDays } from '../utils.js';
+import { createProject, updateProject, deleteProject } from '../store.js';
+import { h, selectEl, toast, num, fmtDate, addDays, confirmDialog, promptDialog } from '../utils.js';
+import { isAdmin, toEmail, accountLabel, ACCOUNT_DOMAIN } from '../accounts.js';
 
-export async function openProjectForm({ project = null, plan = null, onSaved }) {
+/**
+ * onDeleted：有傳入時顯示「刪除專案」（只在首頁提供；地圖畫面開著規劃時不能刪）
+ */
+export async function openProjectForm({ project = null, plan = null, onSaved, onDeleted = null }) {
   const isNew = !project;
-  const canEditBounds = isNew || project.creatorNickname === state.nickname;
+  const admin = isAdmin();
+  const canEditBounds = isNew || admin || project.creatorNickname === state.nickname;
+  // 擁有帳號（只有管理員看得到、可轉移）
+  const oldOwner = String(project?.ownerEmail || '').toLowerCase();
+  const ownerIn = h('input', { type: 'text', class: 'full', value: oldOwner ? accountLabel(oldOwner) : '',
+    placeholder: `帳號名稱，例如 hokkaido（自動補 @${ACCOUNT_DOMAIN}）；留空＝未歸屬`, autocapitalize: 'off', spellcheck: 'false' });
   let bounds = project?.bounds ? { ...project.bounds } : null;
   let defaultStart = project?.defaultStart ? { ...project.defaultStart } : null;
   let defaultEnd = project?.defaultEnd ? { ...project.defaultEnd } : null;
@@ -92,6 +101,14 @@ export async function openProjectForm({ project = null, plan = null, onSaved }) 
     h('fieldset', {}, h('legend', {}, '預設起點（Day 1 第一點）'), startBox),
     h('fieldset', {}, h('legend', {}, '預設終點（最後一天最後一點）'), endBox),
     !isNew ? h('div', { class: 'small muted' }, '預設起訖點只影響之後新建的空白規劃。') : null,
+    !isNew && admin ? h('fieldset', { class: 'admin-only' },
+      h('legend', {}, '擁有帳號（管理員）'),
+      h('div', { class: 'small muted' }, `目前：${oldOwner || '未歸屬'}。轉移後只有新的擁有帳號與管理員看得到這個專案。請確認帳號已在 Firebase Authentication 建立。`),
+      ownerIn) : null,
+    !isNew && onDeleted ? h('fieldset', { class: 'danger-zone' },
+      h('legend', {}, '刪除專案'),
+      h('div', { class: 'small muted' }, '會一併刪除所有規劃、歷史紀錄、路線快取與專案備用庫，無法復原。'),
+      h('button', { class: 'danger', onClick: removeProject }, '刪除專案')) : null,
     h('div', { class: 'row end' },
       h('button', { onClick: close }, '取消'),
       h('button', { class: 'primary', onClick: save }, isNew ? '建立專案' : '儲存設定')));
@@ -190,6 +207,17 @@ export async function openProjectForm({ project = null, plan = null, onSaved }) 
     if (!(data.winterFactor > 0)) return toast('冬季係數需大於 0', 'warn');
     if (data.winterPerDay && data.winterFactorsByDay.some(v => !(v > 0))) return toast('每天的冬季係數需大於 0', 'warn');
     if (canEditBounds) data.bounds = bounds;
+    // 管理員轉移擁有帳號：轉移前確認
+    if (!isNew && admin) {
+      const newOwner = toEmail(ownerIn.value);
+      if (newOwner && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newOwner)) return toast('擁有帳號格式不正確', 'warn');
+      if (newOwner !== oldOwner) {
+        const msg = `把專案「${project.name}」的擁有帳號\n從「${oldOwner || '未歸屬'}」轉移給「${newOwner || '未歸屬'}」？\n` +
+          (newOwner ? `轉移後只有 ${newOwner} 與管理員看得到這個專案。` : '改為未歸屬後只有管理員看得到這個專案。');
+        if (!(await confirmDialog(msg, '轉移'))) return;
+        data.ownerEmail = newOwner;
+      }
+    }
     try {
       if (isNew) {
         const id = await createProject({ ...data, creatorNickname: state.nickname });
@@ -199,5 +227,23 @@ export async function openProjectForm({ project = null, plan = null, onSaved }) 
         toast('專案設定已儲存', 'ok'); close(); onSaved?.(project.id, data);
       }
     } catch (e) { toast('儲存失敗：' + e.message, 'error'); }
+  }
+
+  async function removeProject() {
+    const v = await promptDialog(`刪除專案：請輸入專案名稱「${project.name}」確認`, '', project.name);
+    if (v == null) return;
+    if (v !== project.name) { toast('名稱不符，已取消刪除', 'warn'); return; }
+    const btn = form.querySelector('.danger-zone button');
+    btn.disabled = true;
+    try {
+      // 先刪子集合（規劃與歷史、路線快取、專案備用庫），最後才刪專案本身
+      await deleteProject(project.id, (t) => { btn.textContent = t; });
+      toast(`已刪除專案「${project.name}」`, 'ok');
+      close(); onDeleted?.(project.id);
+    } catch (e) {
+      console.error(e);
+      toast('刪除失敗：' + e.message + '（已刪除的部分無法復原，可再按一次刪除剩下的資料）', 'error', 8000);
+      btn.disabled = false; btn.textContent = '刪除專案';
+    }
   }
 }

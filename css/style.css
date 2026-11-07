@@ -376,3 +376,19 @@ input.day-time { padding: 1px 4px; font-size: 12px; }
   .modal-full { height: calc(100vh - 16px); }
   .modal-overlay { padding: 8px; }
 }
+
+/* ---------- 多帳號：管理員標籤、專案分組、危險操作 ---------- */
+.admin-tag { background: #fdecea; color: #b3261e; font-weight: 600; }
+.proj-group { display: flex; flex-direction: column; gap: 8px; }
+.proj-group + .proj-group { margin-top: 10px; }
+.group-head {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; text-align: left;
+  border: none; background: transparent; padding: 4px 2px; border-bottom: 1px solid #e3e3e3; border-radius: 0;
+}
+.group-head:hover { background: #f5f9ff; }
+.group-caret { color: var(--primary); width: 1em; }
+.proj-group-body { display: flex; flex-direction: column; gap: 8px; padding-left: 10px; }
+.proj-list > .empty-hint { font-size: 14px; padding: 12px 0; }
+.danger-zone { border-color: #f1b8b3; }
+.danger-zone legend { color: var(--danger); }
+.login-card label.row.col { gap: 4px; }
