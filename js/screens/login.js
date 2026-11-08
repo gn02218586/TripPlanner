@@ -1,8 +1,8 @@
 // 登入畫面：帳號（沒有 @ 自動補 @tripplanner.app）、密碼、選填暱稱（存在這台電腦的瀏覽器）
-import { auth, signInWithEmailAndPassword } from '../firebase.js';
-import { h } from '../utils.js';
-import { toEmail, ACCOUNT_DOMAIN } from '../accounts.js';
-import { loadNickname, saveNickname } from './common.js';
+import { auth, signInWithEmailAndPassword } from '../firebase.js?v=2026-11-08-2';
+import { h } from '../utils.js?v=2026-11-08-2';
+import { toEmail, ACCOUNT_DOMAIN } from '../accounts.js?v=2026-11-08-2';
+import { loadNickname, saveNickname } from './common.js?v=2026-11-08-2';
 
 const ERR = {
   'auth/invalid-credential': '帳號或密碼錯誤',

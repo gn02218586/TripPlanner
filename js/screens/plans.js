@@ -1,13 +1,13 @@
 // 規劃分支：在專案列表右側（窄螢幕在專案卡片下方）展開某專案底下的所有規劃
 // 可開啟、複製成新規劃、刪除、開啟新規劃（空白或複製現有）、匯入行程
-import { state, blankPlanData, normalizePlan, fitPlanToProject } from '../state.js';
-import { listPlans, getPlan, createPlan, deletePlan, getLibrary, listProjects, copyPlanToProject, migratePlanBackups } from '../store.js';
-import { isAdmin, accountLabel } from '../accounts.js';
-import { listAccounts, accountTitle } from '../admin.js';
-import { libraryCounts } from '../library.js';
-import { h, selectEl, fmtDateTime, toast, openModal, confirmDialog, promptDialog, clone, uid } from '../utils.js';
-import { openProjectForm } from './project-form.js';
-import { openImport } from '../import.js';
+import { state, blankPlanData, normalizePlan, fitPlanToProject } from '../state.js?v=2026-11-08-2';
+import { listPlans, getPlan, createPlan, deletePlan, getLibrary, listProjects, copyPlanToProject, migratePlanBackups, setPlanLocked } from '../store.js?v=2026-11-08-2';
+import { isAdmin, accountLabel } from '../accounts.js?v=2026-11-08-2';
+import { listAccounts, accountTitle } from '../admin.js?v=2026-11-08-2';
+import { libraryCounts } from '../library.js?v=2026-11-08-2';
+import { h, selectEl, fmtDateTime, toast, openModal, confirmDialog, promptDialog, clone, uid } from '../utils.js?v=2026-11-08-2';
+import { openProjectForm } from './project-form.js?v=2026-11-08-2';
+import { openImport } from '../import.js?v=2026-11-08-2';
 
 /** 複製規劃的行程（點換新 id；備用庫是專案共用，不必複製） */
 async function copyPlanData(project, srcId) {
@@ -128,6 +128,10 @@ export function buildBranch(project, { onDeleted, onCopied } = {}) {
     h('div', { class: 'branch-scroll scroll' }, list));
 
   let plans = [];
+  // 一般帳號：專案被鎖定時不能新增、複製、匯入、刪除規劃
+  const admin = isAdmin();
+  const projRO = !admin && !!project.locked;
+  const RO_TIP = '已被管理員鎖定';
   async function load() {
     try {
       // 舊資料轉移：各規劃的本規劃備用點合併到專案備用庫（只做一次；失敗時保留舊資料）
@@ -149,28 +153,40 @@ export function buildBranch(project, { onDeleted, onCopied } = {}) {
             h('div', { class: 'li-title' }, '📦 專案備用庫'),
             h('div', { class: 'small muted' }, libData ? countText : '讀取失敗'))));
       const items = plans.map(p => h('li', { class: 'branch-item' },
-        h('div', { class: 'card plan-card', title: '開啟這份規劃', onClick: (e) => {
-          if (e.target.closest('button')) return;
+        h('div', { class: 'card plan-card' + (p.locked ? ' locked' : ''), title: p.locked ? '開啟這份規劃（已鎖定）' : '開啟這份規劃', onClick: (e) => {
+          if (e.target.closest('button, label, input')) return;
           location.hash = `#/p/${project.id}/${p.id}`;
         } },
           h('div', { class: 'plan-card-main' },
-            h('div', { class: 'li-title' }, p.name),
+            h('div', { class: 'li-title' }, p.locked ? h('span', { class: 'lock-icon', title: '已被管理員鎖定' }, '🔒') : null, p.name),
             h('div', { class: 'small muted' }, `建立 ${p.creator || '—'}・最後修改 ${p.lastEditor || '—'}`),
             h('div', { class: 'small muted' }, fmtDateTime(p.updatedAt))),
           h('div', { class: 'plan-card-btns' },
-            h('button', { class: 'small-btn', title: '在這個專案複製成新規劃（只複製行程；備用庫是專案共用）', onClick: () => copyPlan(p) }, '複製'),
-            isAdmin() ? h('button', { class: 'small-btn', title: '管理員：複製到其他專案（任何帳號）', onClick: () => copyToProjectDialog(project, p, load) }, '複製到其他專案') : null,
-            h('button', { class: 'small-btn danger', title: '刪除規劃', onClick: () => removePlan(p) }, '刪除')))));
+            admin ? lockToggle(p) : null,
+            h('button', { class: 'small-btn', disabled: projRO, title: projRO ? RO_TIP : '在這個專案複製成新規劃（只複製行程；備用庫是專案共用）', onClick: () => copyPlan(p) }, '複製'),
+            admin ? h('button', { class: 'small-btn', title: '管理員：複製到其他專案（任何帳號）', onClick: () => copyToProjectDialog(project, p, load) }, '複製到其他專案') : null,
+            h('button', { class: 'small-btn danger', disabled: projRO || (!admin && p.locked), title: projRO || (!admin && p.locked) ? RO_TIP : '刪除規劃', onClick: () => removePlan(p) }, '刪除')))));
       list.replaceChildren(libNode, ...(items.length ? items
         : [h('li', { class: 'branch-item' }, h('div', { class: 'muted small branch-loading' }, '還沒有規劃'))]),
         h('li', { class: 'branch-item branch-add' }, actions));
       actions.replaceChildren(
-        h('button', { class: 'primary', onClick: () => newPlanDialog(project, plans) }, '＋ 開啟新規劃'),
-        h('button', { onClick: () => openImport(project, { onDone: load }) }, '匯入行程'),
+        project.locked ? h('div', { class: 'small lock-note' }, admin ? '🔒 專案已鎖定（管理員可編輯）' : '🔒 專案已被管理員鎖定，只能檢視') : null,
+        h('button', { class: 'primary', disabled: projRO, title: projRO ? RO_TIP : null, onClick: () => newPlanDialog(project, plans) }, '＋ 開啟新規劃'),
+        h('button', { disabled: projRO, title: projRO ? RO_TIP : null, onClick: () => openImport(project, { onDone: load }) }, '匯入行程'),
         h('button', { class: 'small-btn', onClick: () => openProjectForm({ project, onSaved: () => location.reload(), onDeleted, onCopied }) }, '專案設定'));
     } catch (e) {
       list.replaceChildren(h('li', { class: 'branch-item' }, h('div', { class: 'error small' }, '讀取失敗：' + e.message)));
     }
+  }
+
+  /** 管理員：鎖定規劃開關（只改 locked，不影響正在編輯的版本號） */
+  function lockToggle(p) {
+    const cb = h('input', { type: 'checkbox', checked: !!p.locked, onChange: async () => {
+      const v = cb.checked;
+      try { await setPlanLocked(project.id, p.id, v); toast(v ? `已鎖定「${p.name}」` : `已解除鎖定「${p.name}」`, 'ok'); load(); }
+      catch (e) { cb.checked = !v; toast('設定失敗：' + e.message, 'error'); }
+    } });
+    return h('label', { class: 'small lock-toggle', title: '管理員：鎖定後一般帳號只能檢視這個規劃' }, cb, '鎖定規劃');
   }
 
   async function copyPlan(p) {

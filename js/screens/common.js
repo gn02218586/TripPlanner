@@ -1,10 +1,10 @@
 // 各畫面共用：頂部列、暱稱（存在這台電腦的瀏覽器；沒填就顯示帳號名稱）
-import { state, emit } from '../state.js';
-import { auth, signOut } from '../firebase.js';
-import { h, promptDialog } from '../utils.js';
-import { accountName, currentEmail, isAdmin } from '../accounts.js';
-import { stopPresence } from '../presence.js';
-import { onlineButton } from '../admin.js';
+import { state, emit } from '../state.js?v=2026-11-08-2';
+import { auth, signOut } from '../firebase.js?v=2026-11-08-2';
+import { h, promptDialog } from '../utils.js?v=2026-11-08-2';
+import { accountName, currentEmail, isAdmin } from '../accounts.js?v=2026-11-08-2';
+import { stopPresence } from '../presence.js?v=2026-11-08-2';
+import { onlineButton } from '../admin.js?v=2026-11-08-2';
 
 const NICK_KEY = 'tripplanner.nickname';
 
@@ -48,4 +48,16 @@ export function topBar(left = [], right = []) {
 async function logout() {
   try { await stopPresence(); } catch { /* 刪除失敗也照樣登出 */ }
   signOut(auth);
+}
+
+/**
+ * 鎖定提示文字（畫面頂部）；沒有鎖定回傳空字串
+ * - 管理員：「🔒 已鎖定（管理員可編輯）」
+ * - 一般帳號：「🔒 已被管理員鎖定，只能檢視」（只鎖規劃時補充備用庫仍可編輯）
+ */
+export function lockBarText({ projectLocked, planLocked, libEditable = false }) {
+  if (!projectLocked && !planLocked) return '';
+  const what = projectLocked && planLocked ? '專案與規劃' : projectLocked ? '專案' : '規劃';
+  if (isAdmin()) return `🔒 已鎖定（管理員可編輯）：${what}已被鎖定，一般帳號只能檢視`;
+  return '🔒 已被管理員鎖定，只能檢視' + (!projectLocked && libEditable ? '（備用庫仍可編輯）' : '');
 }

@@ -1,19 +1,21 @@
 // 主畫面：左地圖、右上行程流程、右下備用庫（專案共用、可直接編輯）；頂部列含存檔狀態、歷史、匯出、專案設定
-import { state, on, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js';
+import { state, on, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js?v=2026-11-08-2';
 import {
   startPlanSession, endPlanSession, listHistory, restoreSnapshot, hasUnsaved, saveNow, updateProject,
   migratePlanBackups, startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow,
-} from '../store.js';
-import { initRouteCache, requestRoutes, getRouteInfo } from '../routes.js';
-import { computeSchedule } from '../schedule.js';
-import { createMapView } from '../map-view.js';
-import { createItineraryView } from '../itinerary-view.js';
-import { createBackupView } from '../backup-view.js';
-import { openExport } from '../export.js';
-import { openProjectForm } from './project-form.js';
-import { topBar } from './common.js';
-import { setPresenceScreen } from '../presence.js';
-import { h, debounce, toast, openModal, confirmDialog, promptDialog, fmtDateTime, transitDepartureDate } from '../utils.js';
+  setPlanLocked, startLockWatch, stopLockWatch,
+} from '../store.js?v=2026-11-08-2';
+import { isAdmin } from '../accounts.js?v=2026-11-08-2';
+import { initRouteCache, requestRoutes, getRouteInfo } from '../routes.js?v=2026-11-08-2';
+import { computeSchedule } from '../schedule.js?v=2026-11-08-2';
+import { createMapView } from '../map-view.js?v=2026-11-08-2';
+import { createItineraryView } from '../itinerary-view.js?v=2026-11-08-2';
+import { createBackupView } from '../backup-view.js?v=2026-11-08-2';
+import { openExport } from '../export.js?v=2026-11-08-2';
+import { openProjectForm } from './project-form.js?v=2026-11-08-2';
+import { topBar, lockBarText } from './common.js?v=2026-11-08-2';
+import { setPresenceScreen } from '../presence.js?v=2026-11-08-2';
+import { h, debounce, toast, openModal, confirmDialog, promptDialog, fmtDateTime, transitDepartureDate } from '../utils.js?v=2026-11-08-2';
 
 const SPLIT_KEY = 'tripplanner.backupHeight';
 const ROUTE_DEBOUNCE = 800;
@@ -36,6 +38,8 @@ export async function mountPlanner(app, project, planId) {
   }
   // 規劃與備用庫各自一個編輯工作階段（各自自動存檔、版本衝突檢查、即時同步）
   await Promise.all([initRouteCache(project.id), startPlanSession(project.id, planId), startLibrarySession(project.id)]);
+  // 鎖定狀態：專案即時監看＋規劃的即時同步；一般帳號被鎖定時唯讀
+  startLockWatch(project.id);
 
   // 線上狀態：目前畫面＝專案名稱／規劃名稱（改名時跟著更新）
   const reportScreen = () => setPresenceScreen({
@@ -44,7 +48,7 @@ export async function mountPlanner(app, project, planId) {
   reportScreen();
 
   // 舊資料轉換（一次性）：專案還沒有「每日包車時數」表時，依這份規劃舊的每日覆蓋值建立
-  if (!Array.isArray(project.charterHoursByDay)) {
+  if (!Array.isArray(project.charterHoursByDay) && (isAdmin() || !project.locked)) {
     const table = deriveCharterTable(project, state.plan);
     project.charterHoursByDay = table;
     updateProject(project.id, { charterHoursByDay: table })
@@ -62,6 +66,13 @@ export async function mountPlanner(app, project, planId) {
   const statusEl = h('span', { class: 'save-status' }, '已儲存');
   const planNameBtn = h('button', { class: 'link-btn plan-name', title: '重新命名規劃', onClick: renamePlan }, state.plan.name);
   const banner = h('div', { class: 'banner hidden' });
+  const lockBar = h('div', { class: 'lock-bar hidden' });
+  // 管理員：鎖定規劃開關
+  const lockCb = h('input', { type: 'checkbox', onChange: async () => {
+    const v = lockCb.checked;
+    try { await setPlanLocked(project.id, planId, v); toast(v ? '已鎖定規劃' : '已解除鎖定規劃', 'ok'); }
+    catch (e) { lockCb.checked = !v; toast('設定失敗：' + e.message, 'error'); }
+  } });
   const mapEl = h('div', { class: 'map' });
   const itinEl = h('div', { class: 'itinerary' });
   const splitter = h('div', { class: 'splitter', title: '拖動調整大小' });
@@ -72,13 +83,28 @@ export async function mountPlanner(app, project, planId) {
       h('a', { href: `#/p/${project.id}`, class: 'link-btn', title: '返回專案列表（自動展開這個專案）' }, '← 專案列表'),
       h('span', { class: 'proj-name' }, project.name), h('span', { class: 'muted' }, '/'), planNameBtn, statusEl,
     ], [
+      isAdmin() ? h('label', { class: 'small lock-toggle', title: '管理員：鎖定後一般帳號只能檢視這個規劃' }, lockCb, '🔒 鎖定規劃') : null,
       h('button', { class: 'small-btn', onClick: openHistory }, '歷史'),
       h('button', { class: 'small-btn', onClick: openExport }, '匯出'),
       h('button', { class: 'small-btn', onClick: openSettings }, '專案設定'),
     ]),
+    lockBar,
     banner,
     h('div', { class: 'main' }, mapEl, side));
   app.replaceChildren(root);
+
+  // ---------- 鎖定提示（頂部） ----------
+  function renderLock() {
+    const text = lockBarText({ projectLocked: state.projectLocked, planLocked: state.planLocked, libEditable: !state.libRO });
+    lockBar.textContent = text || '';
+    lockBar.classList.toggle('hidden', !text);
+    lockBar.classList.toggle('admin', isAdmin());
+    lockCb.checked = !!state.planLocked;
+    planNameBtn.disabled = !!state.planRO;
+    planNameBtn.title = state.planRO ? '已鎖定，不能改名' : '重新命名規劃';
+  }
+  renderLock();
+  offs.push(on('lock', renderLock));
 
   // 分隔線拖動
   try { const hgt = +localStorage.getItem(SPLIT_KEY); if (hgt > 60) backupEl.style.height = hgt + 'px'; } catch { /* 忽略 */ }
@@ -176,6 +202,7 @@ export async function mountPlanner(app, project, planId) {
   window.addEventListener('beforeunload', beforeUnload);
 
   async function renamePlan() {
+    if (state.planRO) return;
     const v = await promptDialog('重新命名規劃', state.plan.name);
     if (v && v !== state.plan.name) mutate(p => { p.name = v; });
   }
@@ -189,7 +216,7 @@ export async function mountPlanner(app, project, planId) {
         const stops = it.snapshot?.days?.reduce((n, d) => n + d.stops.length, 0) ?? 0;
         return h('div', { class: 'row-item card' },
           h('div', { class: 'grow' }, h('strong', {}, fmtDateTime(it.savedAt)), h('span', { class: 'small muted' }, `　${it.editor || '—'}・行程 ${stops} 點`)),
-          h('button', { onClick: async () => {
+          h('button', { disabled: !!state.planRO, title: state.planRO ? '已鎖定，不能還原' : null, onClick: async () => {
             if (!(await confirmDialog(`還原到 ${fmtDateTime(it.savedAt)} 的版本？\n目前內容會被取代（仍可再從歷史還原）。`, '還原'))) return;
             restoreSnapshot(it.snapshot, mutate); m.close(); toast('已還原', 'ok');
           } }, '還原'));
@@ -205,7 +232,8 @@ export async function mountPlanner(app, project, planId) {
         const boundsChanged = data.bounds && JSON.stringify(data.bounds) !== JSON.stringify(state.project.bounds);
         Object.assign(state.project, data);
         if (boundsChanged) { await Promise.all([saveNow(), saveLibraryNow()]); location.reload(); return; }
-        mutate(() => {}); // 天數、日期、包車時數、冬季係數等變更：重新正規化、重算並存檔
+        // 天數、日期、包車時數、冬季係數等變更：重新正規化、重算並存檔（規劃被鎖定時只在畫面重算，不存檔）
+        mutate(() => {}, { save: !state.planRO });
       },
     });
   }
@@ -218,6 +246,7 @@ export async function mountPlanner(app, project, planId) {
     offs.forEach(f => f());
     mapView.destroy(); itinView.destroy(); backupView.destroy();
     await Promise.all([endPlanSession(), endLibrarySession()]);
+    stopLockWatch();
     state.plan = null; state.planId = null; state.library = null;
   };
 }

@@ -2,11 +2,11 @@
 import {
   db, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
   query, where, orderBy, limit, onSnapshot, runTransaction, writeBatch, deleteField,
-} from './firebase.js';
-import { state, emit, on, normalizePlan, fitPlanToProject, normDays, HOTEL_TAB_KIND } from './state.js';
-import { debounce, clone, uid, toast, choose, fmtDateTime } from './utils.js';
-import { isAdmin, currentEmail } from './accounts.js';
-import { normalizeLibrary, mergeIntoLibrary, inferTabType, libTabForType } from './library.js';
+} from './firebase.js?v=2026-11-08-2';
+import { state, emit, on, normalizePlan, fitPlanToProject, normDays, HOTEL_TAB_KIND } from './state.js?v=2026-11-08-2';
+import { debounce, clone, uid, toast, choose, fmtDateTime } from './utils.js?v=2026-11-08-2';
+import { isAdmin, currentEmail } from './accounts.js?v=2026-11-08-2';
+import { normalizeLibrary, mergeIntoLibrary, inferTabType, libTabForType } from './library.js?v=2026-11-08-2';
 
 const SESSION_ID = uid();          // 用來分辨「自己存的」與「別人存的」
 const SAVE_DEBOUNCE = 2000;
@@ -41,7 +41,8 @@ export async function getProject(id) {
  */
 export async function createProject(data, { ownerEmail = null } = {}) {
   const owner = ownerEmail && isAdmin() ? String(ownerEmail).toLowerCase() : currentEmail();
-  const ref = await addDoc(projectsCol(), { ...clone(data), ownerEmail: owner, createdAt: Date.now() });
+  // 新專案一律不鎖定（規則：一般帳號不能建立成鎖定）
+  const ref = await addDoc(projectsCol(), { ...clone(data), locked: false, ownerEmail: owner, createdAt: Date.now() });
   return ref.id;
 }
 export async function updateProject(id, data) {
@@ -72,6 +73,14 @@ async function deleteRefs(refs) {
  * onProgress(text)：進度文字
  */
 export async function deleteProject(pid, onProgress = () => {}) {
+  // 一般帳號：專案或其中的規劃被鎖定時，刪除前就拒絕（避免刪到一半）
+  if (!isAdmin()) {
+    onProgress('檢查鎖定…');
+    const p = await getProject(pid);
+    if (p?.locked) throw new Error('這個專案已被管理員鎖定，不能刪除');
+    const locked = (await getDocs(plansCol(pid))).docs.filter(d => d.data().locked);
+    if (locked.length) throw new Error(`專案內有被管理員鎖定的規劃（${locked.map(d => d.data().name || '未命名').join('、')}），不能刪除`);
+  }
   for (const name of PROJECT_SUBCOLLECTIONS) {
     const snap = await getDocs(collection(db, 'projects', pid, name));
     if (name === 'plans') {
@@ -120,7 +129,7 @@ export async function copyProjectTo(srcId, { ownerEmail, name }, onProgress = ()
     const { id: _omit, ...data } = src;
     const ref = await addDoc(projectsCol(), {
       ...clone(data), name, ownerEmail: String(ownerEmail).toLowerCase(),
-      creatorNickname: state.nickname, createdAt: Date.now(),
+      creatorNickname: state.nickname, createdAt: Date.now(), locked: false,   // 複本不鎖定
     });
     newId = ref.id;
 
@@ -130,7 +139,7 @@ export async function copyProjectTo(srcId, { ownerEmail, name }, onProgress = ()
         const batch = writeBatch(db);
         for (const d of docs.slice(i, i + BATCH_MAX)) {
           const v = d.data();
-          if (sub === 'plans') v.lastSessionId = null;   // 不沿用原本的編輯工作階段
+          if (sub === 'plans') { v.lastSessionId = null; v.locked = false; }   // 不沿用原本的編輯工作階段；複本不鎖定
           batch.set(doc(db, 'projects', newId, sub, d.id), v);
         }
         await batch.commit();
@@ -214,8 +223,11 @@ export async function copyPlanToProject(srcPid, planId, targetPid, { name, inclu
  * 回傳 { plans: 有備用點的規劃數, added }；沒有要轉移的回傳 null
  */
 export async function migratePlanBackups(pid) {
+  // 一般帳號：專案被鎖定時不轉移；被鎖定的規劃也略過（解鎖或管理員開啟時再轉）
+  const admin = isAdmin();
+  if (!admin && (await getProject(pid))?.locked) return null;
   const snap = await getDocs(plansCol(pid));
-  const todo = snap.docs.filter(d => { const v = d.data(); return v.backup && !v.backupMigrated; });
+  const todo = snap.docs.filter(d => { const v = d.data(); return v.backup && !v.backupMigrated && (admin || !v.locked); });
   if (!todo.length) return null;
   const tabSpecs = [], entries = [];
   let plans = 0;
@@ -242,8 +254,8 @@ export async function migratePlanBackups(pid) {
 export async function listPlans(pid) {
   const snap = await getDocs(plansCol(pid));
   return snap.docs.map(d => {
-    const { name, creator, lastEditor, updatedAt } = d.data();
-    return { id: d.id, name, creator, lastEditor, updatedAt };
+    const { name, creator, lastEditor, updatedAt, locked } = d.data();
+    return { id: d.id, name, creator, lastEditor, updatedAt, locked: !!locked };
   }).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 }
 export async function getPlan(pid, planId) {
@@ -254,9 +266,20 @@ export async function createPlan(pid, { name, days }) {
   const now = Date.now();
   const ref = await addDoc(plansCol(pid), clone({
     name, creator: state.nickname, lastEditor: state.nickname, updatedAt: now, version: 1,
-    lastSessionId: SESSION_ID, days, backupMigrated: true,
+    lastSessionId: SESSION_ID, days, backupMigrated: true, locked: false,
   }));
   return ref.id;
+}
+
+// ---------- 管理員鎖定 ----------
+// 只改 locked 欄位，不改版本號（不會讓正在編輯的人發生存檔衝突）；規則只允許管理員變更 locked
+export async function setProjectLocked(pid, locked) {
+  if (!isAdmin()) throw new Error('只有管理員可以鎖定');
+  await updateDoc(doc(db, 'projects', pid), { locked: !!locked });
+}
+export async function setPlanLocked(pid, planId, locked) {
+  if (!isAdmin()) throw new Error('只有管理員可以鎖定');
+  await updateDoc(planRef(pid, planId), { locked: !!locked });
 }
 export async function deletePlan(pid, planId) {
   const hs = await getDocs(historyCol(pid, planId));
@@ -320,9 +343,11 @@ export async function startPlanSession(pid, planId) {
   };
   state.planId = planId;
   state.plan = data;
+  state.planLocked = !!data.locked;
   normalizePlan(state.plan, state.project);
   session.offDirty = on('dirty', () => { session.editCounter++; setStatus('dirty'); debouncedSave(); });
-  addHistory().catch(e => console.warn('歷史快照失敗', e));     // 開啟規劃時先存一筆
+  // 開啟規劃時先存一筆歷史快照（被鎖定、只能檢視時不寫）
+  if (isAdmin() || !(data.locked || state.project?.locked)) addHistory().catch(e => console.warn('歷史快照失敗', e));
   const my = session;
   session.unsub = onSnapshot(planRef(pid, planId), (snap) => { if (session === my) handleRemote(snap); });
   setStatus('saved');
@@ -339,7 +364,7 @@ export async function endPlanSession() {
 /** 立即存檔（transaction 檢查 version） */
 export async function saveNow(force = false) {
   const s = session;
-  if (!s || s.conflictOpen) return;
+  if (!s || s.conflictOpen || state.planRO) return;
   if (s.saving) { debouncedSave(); return; }
   if (!force && s.editCounter === s.savedCounter) return;
   s.saving = true; setStatus('saving');
@@ -361,7 +386,10 @@ export async function saveNow(force = false) {
     });
   } catch (e) {
     console.error(e);
-    s.saving = false; setStatus('error');
+    s.saving = false;
+    // 規則拒絕：多半是剛被鎖定（即時同步還沒收到）→ 提示並載入雲端版本
+    if (e?.code === 'permission-denied') { setStatus('saved'); lockedNotice(); handleLockedSaveFail(); return; }
+    setStatus('error');
     toast('存檔失敗：' + e.message, 'error', 6000);
     return;
   }
@@ -409,8 +437,14 @@ function applyRemote(data) {
 function handleRemote(snap) {
   const s = session;
   if (!snap.exists()) { toast('這個規劃已被刪除', 'error'); return; }
-  if (snap.metadata.hasPendingWrites) return;
   const data = snap.data();
+  // 鎖定變更（管理員只改 locked、不改版本號）：立即切換唯讀／可編輯
+  if (!!data.locked !== state.planLocked) {
+    state.planLocked = !!data.locked;
+    state.plan.locked = !!data.locked;
+    applyLocks();
+  }
+  if (snap.metadata.hasPendingWrites) return;
   if ((data.version || 0) <= s.baseVersion) return;
   if (data.lastSessionId === SESSION_ID) { s.baseVersion = Math.max(s.baseVersion, data.version || 0); return; }
   const who = data.lastEditor || '其他人';
@@ -489,7 +523,7 @@ export async function endLibrarySession() {
 
 export async function saveLibraryNow(force = false) {
   const s = libSession;
-  if (!s || s.conflictOpen) return;
+  if (!s || s.conflictOpen || state.libRO) return;
   if (s.saving) { debouncedLibSave(); return; }
   if (!force && s.editCounter === s.savedCounter) return;
   s.saving = true; setLibStatus('saving');
@@ -508,7 +542,9 @@ export async function saveLibraryNow(force = false) {
     });
   } catch (e) {
     console.error(e);
-    s.saving = false; setLibStatus('error');
+    s.saving = false;
+    if (e?.code === 'permission-denied') { setLibStatus('saved'); lockedNotice(); handleLockedSaveFail(); return; }
+    setLibStatus('error');
     toast('專案備用庫存檔失敗：' + e.message, 'error', 6000);
     return;
   }
@@ -560,4 +596,90 @@ function handleLibRemote(snap) {
   } else {
     emit('libRemoteChange', { who, apply: () => applyLibRemote(data) });
   }
+}
+
+// ---------- 鎖定狀態（規劃畫面、專案備用庫畫面） ----------
+// state.projectLocked／planLocked：雲端的鎖定狀態（即時同步）
+// state.planRO／libRO：一般帳號的唯讀（管理員永遠可以編輯）
+// 變成唯讀時，尚未儲存的修改無法存檔：提示後載入雲端最新版本
+let lockUnsub = null;
+let lockNoticeAt = 0;
+
+function lockedNotice() {
+  if (Date.now() - lockNoticeAt < 3000) return;
+  lockNoticeAt = Date.now();
+  toast('🔒 已被鎖定，修改無法儲存（已載入雲端最新版本）', 'error', 7000);
+}
+
+/** 依鎖定狀態重新計算唯讀；變成唯讀時放棄尚未儲存的修改 */
+function applyLocks() {
+  const admin = isAdmin();
+  const planRO = !admin && !!(state.projectLocked || (session && state.planLocked));
+  const libRO = !admin && !!state.projectLocked;
+  const toPlanRO = planRO && !state.planRO, toLibRO = libRO && !state.libRO;
+  const unlocked = (!planRO && state.planRO) || (!libRO && state.libRO);
+  state.planRO = planRO; state.libRO = libRO;
+  if (toPlanRO) discardPlanEdits();
+  if (toLibRO) discardLibEdits();
+  if (unlocked) toast('🔓 管理員已解除鎖定，可以編輯了', 'ok');
+  emit('lock');
+}
+
+async function reloadPlan(s) {
+  const fresh = await getPlan(s.pid, s.planId).catch(() => null);
+  if (fresh && session === s) applyRemote(fresh);
+}
+async function reloadLibrary(s) {
+  const fresh = await getDoc(libraryRef(s.pid)).catch(() => null);
+  if (fresh && libSession === s) applyLibRemote(fresh.exists() ? fresh.data() : {});
+}
+
+function discardPlanEdits() {
+  const s = session; if (!s) return;
+  debouncedSave.cancel();
+  if (s.saving) return;   // 存檔進行中：被規則拒絕時由 handleLockedSaveFail 處理
+  if (s.editCounter !== s.savedCounter) { lockedNotice(); reloadPlan(s); }
+}
+function discardLibEdits() {
+  const s = libSession; if (!s) return;
+  debouncedLibSave.cancel();
+  if (s.saving) return;
+  if (s.editCounter !== s.savedCounter) { lockedNotice(); reloadLibrary(s); }
+}
+
+/** 存檔被規則拒絕：重新讀取鎖定狀態並載入雲端最新版本 */
+async function handleLockedSaveFail() {
+  const pid = session?.pid || libSession?.pid;
+  if (!pid) return;
+  try {
+    const p = await getProject(pid);
+    if (p) { state.projectLocked = !!p.locked; if (state.project?.id === pid) state.project.locked = !!p.locked; }
+    if (session) { const pl = await getPlan(session.pid, session.planId); if (pl) state.planLocked = !!pl.locked; }
+  } catch (e) { console.warn('讀取鎖定狀態失敗', e); }
+  applyLocks();
+  if (session) await reloadPlan(session);
+  if (libSession) await reloadLibrary(libSession);
+}
+
+/**
+ * 開始監看專案的鎖定狀態（規劃畫面、專案備用庫畫面開啟時）
+ * 規劃的鎖定由規劃的即時同步處理（handleRemote）
+ */
+export function startLockWatch(pid) {
+  stopLockWatch();
+  state.projectLocked = !!state.project?.locked;
+  if (session) state.planLocked = !!state.plan?.locked;
+  applyLocks();
+  lockUnsub = onSnapshot(doc(db, 'projects', pid), (snap) => {
+    if (!snap.exists()) return;
+    const locked = !!snap.data().locked;
+    if (state.project?.id === pid) state.project.locked = locked;
+    if (locked !== state.projectLocked) { state.projectLocked = locked; applyLocks(); }
+  }, (e) => console.warn('專案鎖定狀態同步失敗', e?.code || e));
+}
+
+export function stopLockWatch() {
+  lockUnsub?.(); lockUnsub = null;
+  state.projectLocked = false; state.planLocked = false;
+  state.planRO = false; state.libRO = false;
 }

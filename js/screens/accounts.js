@@ -1,13 +1,14 @@
 // 帳號管理（只有管理員）：已登記帳號組的清單、備註、專案數量、最後上線、登記時間；登記與刪除登記
-import { on } from '../state.js';
-import { listProjects } from '../store.js';
-import { isAdmin } from '../accounts.js';
+import { on } from '../state.js?v=2026-11-08-2';
+import { listProjects, updateProject, deleteProject } from '../store.js?v=2026-11-08-2';
+import { isAdmin, isAdminEmail } from '../accounts.js?v=2026-11-08-2';
 import {
   listAccounts, ensureAccountsFromProjects, openRegisterDialog, updateAccountNote, deleteAccount, firebaseUsersButton,
-} from '../admin.js';
-import { lastSeenByEmail, startPresenceWatch, onlineCount, isOnline, presenceList } from '../presence.js';
-import { topBar } from './common.js';
-import { h, toast, openModal, fmtDateTime } from '../utils.js';
+  accountPicker, accountTitle,
+} from '../admin.js?v=2026-11-08-2';
+import { lastSeenByEmail, startPresenceWatch, onlineCount, isOnline, presenceList } from '../presence.js?v=2026-11-08-2';
+import { topBar } from './common.js?v=2026-11-08-2';
+import { h, toast, openModal, fmtDateTime } from '../utils.js?v=2026-11-08-2';
 
 export async function mountAccounts(app) {
   const offs = [];
@@ -67,30 +68,102 @@ export async function mountAccounts(app) {
           h('td', { class: 'small' }, onlineEmails.has(a.email) ? h('span', { class: 'tag online-tag' }, '線上')
             : last ? fmtDateTime(last) : h('span', { class: 'muted' }, '—')),
           h('td', { class: 'small muted' }, a.createdAt ? fmtDateTime(a.createdAt) : '—'),
-          h('td', {}, h('button', { class: 'small-btn danger', onClick: () => remove(a) }, '刪除登記')));
+          h('td', {}, isAdminEmail(a.email)
+            ? h('button', { class: 'small-btn', disabled: true, title: '管理員帳號不能刪除' }, '刪除帳號組')
+            : h('button', { class: 'small-btn danger', onClick: () => remove(a) }, '刪除帳號組')));
       }))),
-    h('div', { class: 'small muted' }, `共 ${accounts.length} 個帳號組；目前線上 ${onlineCount()} 個分頁。最後上線來自線上使用者紀錄（保留 7 天）。`));
+    h('div', { class: 'small muted' }, `共 ${accounts.length} 個帳號組；目前線上 ${onlineCount()} 個裝置。最後上線來自線上使用者紀錄（保留 7 天）。`));
   }
 
-  /** 刪除登記：只刪網站上的登記；Firebase 的登入帳號要到 Firebase 停用或刪除 */
+  /**
+   * 刪除帳號組：先處理這個帳號的專案（轉移或連同刪除），全部成功後才刪除登記（之後不會再被自動補登記）
+   * Firebase 的登入帳號要到 Firebase 停用或刪除
+   */
   async function remove(a) {
-    const n = projects.filter(p => String(p.ownerEmail || '').toLowerCase() === a.email).length;
-    const m = openModal({
-      title: '刪除登記',
-      body: h('div', {},
-        h('p', {}, `確定刪除帳號組「${a.name || a.id}」${a.note ? `（${a.note}）` : ''}的登記？`),
-        h('p', { class: 'warn' }, '這只會刪除網站上的登記，Firebase 的登入帳號請到 Firebase 停用或刪除。'),
-        n ? h('p', { class: 'small' }, `這個帳號有 ${n} 個專案，專案不會被刪除；之後開啟首頁時會自動再補登記（備註為空）。`) : null,
-        h('div', {}, firebaseUsersButton())),
-      actions: [{ label: '取消', value: null }, { label: '刪除登記', value: 'ok', class: 'danger' }],
-    });
-    if ((await m.result) !== 'ok') return;
-    try {
-      await deleteAccount(a.id);
-      accounts = accounts.filter(x => x.id !== a.id);
-      toast('已刪除登記', 'ok');
-      render();
-    } catch (e) { toast('刪除失敗：' + e.message, 'error'); }
+    if (isAdminEmail(a.email)) { toast('管理員帳號不能刪除', 'warn'); return; }
+    const label = a.name || a.id;
+    const owned = projects.filter(p => String(p.ownerEmail || '').toLowerCase() === a.email);
+    const fbNote = () => h('div', { class: 'warn-box' },
+      h('div', {}, 'Firebase 的登入帳號請到 Firebase 停用或刪除。'), firebaseUsersButton());
+
+    if (!owned.length) {
+      const m = openModal({
+        title: '刪除帳號組',
+        body: h('div', {},
+          h('p', {}, `確定刪除帳號組「${label}」${a.note ? `（${a.note}）` : ''}？`),
+          h('p', { class: 'small muted' }, '這個帳號沒有專案，只會刪除網站上的登記。'),
+          fbNote()),
+        actions: [{ label: '取消', value: null }, { label: '刪除帳號組', value: 'ok', class: 'danger' }],
+      });
+      if ((await m.result) !== 'ok') return;
+      try { await deleteAccount(a.id); afterDeleted(a); } catch (e) { toast('刪除失敗：' + e.message, 'error'); }
+      return;
+    }
+
+    // 還有專案：必須選擇處理方式
+    let mode = null;
+    const radio = (v, text) => h('label', { class: 'row' },
+      h('input', { type: 'radio', name: 'acct-del-mode', value: v, onChange: () => { mode = v; sync(); } }), text);
+    const picker = accountPicker({ value: '', allowNone: true, allowOther: false, exclude: [a.email] });
+    const transferBox = h('div', { class: 'sub-box hidden' }, h('div', { class: 'small muted' }, '轉移給：'), picker.el);
+    const confirmIn = h('input', { type: 'text', class: 'full', placeholder: label, autocapitalize: 'off', spellcheck: 'false' });
+    const deleteBox = h('div', { class: 'sub-box hidden' },
+      h('div', { class: 'small warn' }, `會刪除這 ${owned.length} 個專案的所有規劃、歷史紀錄、路線快取與專案備用庫，無法復原。`),
+      h('label', { class: 'row col small' }, `請輸入帳號名稱「${label}」確認`, confirmIn));
+    const okBtn = h('button', { class: 'danger', disabled: true, onClick: () => run() }, '刪除帳號組');
+    const cancelBtn = h('button', { onClick: () => m.close() }, '取消');
+    const progress = h('div', { class: 'copy-progress hidden' });
+    const sync = () => {
+      transferBox.classList.toggle('hidden', mode !== 'transfer');
+      deleteBox.classList.toggle('hidden', mode !== 'delete');
+      okBtn.disabled = !(mode === 'transfer' || (mode === 'delete' && confirmIn.value.trim().toLowerCase() === label.toLowerCase()));
+    };
+    confirmIn.addEventListener('input', sync);
+    const form = h('div', {},
+      h('p', {}, `帳號組「${label}」${a.note ? `（${a.note}）` : ''}還有 ${owned.length} 個專案：`),
+      h('ul', { class: 'small proj-names' }, owned.map(p => h('li', {}, p.locked ? '🔒 ' : '', p.name || '（未命名）'))),
+      h('div', {}, h('strong', {}, '請選擇這些專案的處理方式：')),
+      radio('transfer', '轉移給其他帳號'), transferBox,
+      radio('delete', '連同專案一起刪除'), deleteBox,
+      fbNote(),
+      h('div', { class: 'row end' }, cancelBtn, okBtn));
+    const m = openModal({ title: '刪除帳號組', body: h('div', {}, form, progress), actions: [], wide: true });
+
+    async function run() {
+      const to = mode === 'transfer' ? picker.get() : null;
+      if (mode === 'transfer' && to == null) { toast('請選擇要轉移給哪個帳號', 'warn'); return; }
+      form.classList.add('hidden');
+      progress.classList.remove('hidden');
+      let done = 0;
+      try {
+        for (const p of owned) {
+          const head = `${mode === 'transfer' ? '轉移' : '刪除'}專案 ${done + 1} / ${owned.length}「${p.name || ''}」`;
+          progress.textContent = head + '…';
+          if (mode === 'transfer') await updateProject(p.id, { ownerEmail: to });
+          else await deleteProject(p.id, (t) => { progress.textContent = `${head}：${t}`; });
+          done++;
+        }
+        progress.textContent = '刪除登記…';
+        await deleteAccount(a.id);
+        m.close();
+        toast(mode === 'transfer'
+          ? `已把 ${done} 個專案轉移給「${to ? accountTitle(to, accounts) : '未歸屬'}」，並刪除帳號組「${label}」`
+          : `已刪除 ${done} 個專案與帳號組「${label}」`, 'ok', 6000);
+        afterDeleted(a, true);
+      } catch (e) {
+        console.error(e);
+        progress.replaceChildren(
+          h('p', { class: 'error' }, `處理失敗：${e.message}`),
+          h('p', { class: 'small' }, `已處理 ${done} / ${owned.length} 個專案；帳號組的登記保留，可以再試一次。`),
+          h('div', { class: 'row end' }, h('button', { class: 'primary', onClick: () => { m.close(); load(); } }, '關閉')));
+      }
+    }
+  }
+
+  function afterDeleted(a, quiet = false) {
+    accounts = accounts.filter(x => x.id !== a.id);
+    if (!quiet) toast('已刪除帳號組', 'ok');
+    load();
   }
 
   // 最後上線：線上名單變動時更新（備註輸入中不重繪，避免打斷輸入）

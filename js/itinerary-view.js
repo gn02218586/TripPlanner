@@ -1,15 +1,15 @@
 // 右上：行程流程（依天分組）、搜尋、路段資訊、拖曳排序
-import { lib } from './maps-loader.js';
+import { lib } from './maps-loader.js?v=2026-11-08-2';
 import {
   state, on, emit, mutate, MODES, MODE_LABEL, updateStop, updateLeg, dayCharterHours, selectStop,
   prevPoint, findStop, removeStop,
-} from './state.js';
-import { stopToLibrary } from './library.js';
-import { stopLabelMap, typeIcon, dayColor } from './markers.js';
-import { retryRoute, gmapsDirUrl } from './routes.js';
-import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, fmtShortDur, num, parseHM, toast, confirmDialog } from './utils.js';
-import { buildAddPanel } from './ui-common.js';
-import { makeSortable } from './dnd.js';
+} from './state.js?v=2026-11-08-2';
+import { stopToLibrary } from './library.js?v=2026-11-08-2';
+import { stopLabelMap, typeIcon, dayColor } from './markers.js?v=2026-11-08-2';
+import { retryRoute, gmapsDirUrl } from './routes.js?v=2026-11-08-2';
+import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, fmtShortDur, num, parseHM, toast, confirmDialog } from './utils.js?v=2026-11-08-2';
+import { buildAddPanel, lockControls } from './ui-common.js?v=2026-11-08-2';
+import { makeSortable } from './dnd.js?v=2026-11-08-2';
 
 export async function createItineraryView(container, { getSchedule, mapView }) {
   const offs = [];
@@ -94,6 +94,10 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
     daysEl.replaceChildren(...state.plan.days
       .map((day, di) => (sel == null || sel === di ? dayEl(day, di, sched[di], labels) : null))
       .filter(Boolean));
+    // 鎖定：停用時間、停留、交通方式、包車、↩、× 等（選天、重試路線仍可用）
+    lockControls(daysEl, state.planRO);
+    // 行程與備用庫都被鎖定時，搜尋只會用來加入，隱藏
+    searchBox.classList.toggle('hidden', !!(state.planRO && state.libRO));
     daysEl.scrollTop = scroll;
   }
 
@@ -118,7 +122,7 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
       style: { '--c': color }, dataset: { daySection: di },
     },
       h('div', { class: 'day-head' },
-        h('button', { class: 'day-title', onClick: () => selectDay(sel === di ? null : di), title: sel === di ? '點選以顯示全部天' : '點選以只顯示這天' },
+        h('button', { class: 'day-title ro-keep', onClick: () => selectDay(sel === di ? null : di), title: sel === di ? '點選以顯示全部天' : '點選以只顯示這天' },
           h('span', { class: 'day-dot' }), `Day ${di + 1}`, h('span', { class: 'muted' }, fmtDate(day.date))),
         h('div', { class: 'day-controls' },
           h('label', {}, charterCb, '包車'))),
@@ -179,12 +183,14 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
    */
   function moveToBackup(s) {
     const r = stopToLibrary(s.id);
+    if (r?.blocked) return;
     if (!r) { toast('已從行程移除（備用庫載入中，沒有加入）', 'warn'); return; }
     toast(r.existed ? `已從行程移除（備用庫已有「${s.name}」）` : `已移回備用庫「${r.tabName}」`, 'ok');
   }
 
   /** × 從行程刪除（需確認） */
   async function deleteStop(s) {
+    if (state.planRO) { removeStop(s.id); return; }   // 鎖定：由 mutate 擋下並提示
     if (!(await confirmDialog(`確定從行程刪除「${s.name}」？`, '刪除', true))) return;
     removeStop(s.id);
   }
@@ -256,7 +262,7 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
     } else {
       if (inf.status === 'pending') line.push(h('span', { class: 'muted' }, '計算中…'));
       else if (inf.status === 'error') line.push(h('span', { class: 'error' }, '查詢失敗'),
-        h('button', { class: 'link-btn', onClick: () => retryRoute(inf.key) }, '重試'));
+        h('button', { class: 'link-btn ro-keep', onClick: () => retryRoute(inf.key) }, '重試'));
       else if (inf.status === 'noRoute') notes.push(h('div', { class: 'leg-note warn' }, '⚠ Google 無資料，請手動輸入'));
       else if (inf.status === 'ok') {
         line.push(h('span', {}, fmtDist(inf.distanceMeters)));
@@ -278,6 +284,7 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
   }
 
   offs.push(on('plan', render));
+  offs.push(on('lock', render));
   offs.push(on('routes', render));
   offs.push(on('select', render));
   offs.push(on('stopSelect', render));

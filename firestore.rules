@@ -2,12 +2,16 @@ rules_version = '2';
 
 // 行程規劃地圖：多帳號權限
 // - 管理員可讀寫全部資料
-// - 一般帳號只能讀寫 ownerEmail 等於自己 Email 的專案，以及該專案底下的所有子集合
+// - 一般帳號只能讀寫 ownerEmail 等於自己 Email 的專案，以及該專案底下的子集合
 // - 沒有 ownerEmail 的專案（未歸屬）只有管理員能存取
+// - 鎖定（locked，只有管理員能變更；沒有欄位＝未鎖定）：
+//   - 專案鎖定：一般帳號不能修改或刪除專案，不能寫入 plans、library 及其子集合
+//   - 規劃鎖定：一般帳號不能修改或刪除該規劃，也不能寫入它的 history
+//   - 路線快取（routeCache）不受鎖定影響
 // - presence（線上使用者）：每個帳號只能建立、更新、刪除自己的文件；只有管理員能讀取與刪除全部
 // - accounts（帳號登記）：只有管理員能讀寫
 // ※ 管理員 Email 也寫在 js/accounts.js 的 ADMIN_EMAIL，修改時兩處要一致
-// ※ 子集合用 get() 讀上層專案（寫入前的狀態）：程式一律先建立專案、刪除時最後才刪專案
+// ※ 子集合用 get() 讀上層文件（寫入前的狀態）：程式一律先建立專案、刪除時最後才刪專案
 // 部署方式：Firebase 主控台 → 建構 → Firestore Database → 規則 → 全部取代成本檔內容 → 發布
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -27,22 +31,66 @@ service cloud.firestore {
     function ownsData(data) {
       return signedIn() && data.ownerEmail == myEmail();
     }
+    function projectData(pid) {
+      return get(/databases/$(database)/documents/projects/$(pid)).data;
+    }
+    function planData(pid, planId) {
+      return get(/databases/$(database)/documents/projects/$(pid)/plans/$(planId)).data;
+    }
     // 子集合：檢查上層專案的擁有帳號
     function ownsProject(pid) {
-      return ownsData(get(/databases/$(database)/documents/projects/$(pid)).data);
+      return ownsData(projectData(pid));
+    }
+    // 鎖定：沒有 locked 欄位（舊資料）視為未鎖定
+    function isLocked(data) {
+      return data.get('locked', false) == true;
+    }
+    // 一般帳號建立時不能直接設成鎖定
+    function createsUnlocked() {
+      return request.resource.data.get('locked', false) == false;
+    }
+    // 一般帳號修改時不能變更 locked
+    function lockUnchanged() {
+      return request.resource.data.get('locked', false) == resource.data.get('locked', false);
+    }
+    // 一般帳號可以編輯專案底下的資料：擁有帳號是自己，而且專案未鎖定
+    function canEditProject(pid) {
+      let p = projectData(pid);
+      return ownsData(p) && !isLocked(p);
     }
 
     match /projects/{pid} {
       allow read: if isAdmin() || ownsData(resource.data);
-      // 建立：擁有帳號必須是自己
-      allow create: if isAdmin() || ownsData(request.resource.data);
-      // 修改：一般帳號不能把專案轉給別人（修改前後的擁有帳號都必須是自己）
-      allow update: if isAdmin() || (ownsData(resource.data) && ownsData(request.resource.data));
-      allow delete: if isAdmin() || ownsData(resource.data);
+      // 建立：擁有帳號必須是自己，且不能建立成鎖定
+      allow create: if isAdmin() || (ownsData(request.resource.data) && createsUnlocked());
+      // 修改：不能把專案轉給別人、專案未鎖定、不能變更鎖定
+      allow update: if isAdmin() || (ownsData(resource.data) && ownsData(request.resource.data)
+                                     && !isLocked(resource.data) && lockUnchanged());
+      allow delete: if isAdmin() || (ownsData(resource.data) && !isLocked(resource.data));
 
-      // 規劃（含歷史快照）、路線快取、專案備用庫等所有子集合
-      match /{sub=**} {
+      // 路線快取：不受鎖定影響（檢視時也能計算並儲存路線）
+      match /routeCache/{key} {
         allow read, write: if isAdmin() || ownsProject(pid);
+      }
+
+      // 專案備用庫：專案鎖定時一般帳號只能讀
+      match /library/{docId} {
+        allow read: if isAdmin() || ownsProject(pid);
+        allow write: if isAdmin() || canEditProject(pid);
+      }
+
+      // 規劃：專案鎖定或規劃鎖定時一般帳號只能讀
+      match /plans/{planId} {
+        allow read: if isAdmin() || ownsProject(pid);
+        allow create: if isAdmin() || (canEditProject(pid) && createsUnlocked());
+        allow update: if isAdmin() || (canEditProject(pid) && !isLocked(resource.data) && lockUnchanged());
+        allow delete: if isAdmin() || (canEditProject(pid) && !isLocked(resource.data));
+
+        // 歷史快照：跟著規劃的鎖定
+        match /history/{hid} {
+          allow read: if isAdmin() || ownsProject(pid);
+          allow write: if isAdmin() || (canEditProject(pid) && !isLocked(planData(pid, planId)));
+        }
       }
     }
 

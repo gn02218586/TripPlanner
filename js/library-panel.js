@@ -1,11 +1,11 @@
 // 備用庫清單（規劃畫面右下與專案備用庫編輯畫面共用）
 // 頁簽：新增（選類型）、雙擊改名、× 刪除；每一列：停留分鐘、天數、備註、刪除；拖拉排序、拖到別的頁簽、拖進行程（複製）
-import { state, emit } from './state.js';
-import { LIB_TYPES, LIB_TYPE_LABEL, inferTabType, updateLibItem, addLibTab, renameLibTab, removeLibTab } from './library.js';
-import { typeIcon, LIB_COLORS } from './markers.js';
-import { h, selectEl, openModal, confirmDialog, toast } from './utils.js';
-import { daysButton, scheduledTags, confirmRemoveLibItem } from './ui-common.js';
-import { makeSortable } from './dnd.js';
+import { state, emit } from './state.js?v=2026-11-08-2';
+import { LIB_TYPES, LIB_TYPE_LABEL, inferTabType, updateLibItem, addLibTab, renameLibTab, removeLibTab } from './library.js?v=2026-11-08-2';
+import { typeIcon, LIB_COLORS } from './markers.js?v=2026-11-08-2';
+import { h, selectEl, openModal, confirmDialog, toast } from './utils.js?v=2026-11-08-2';
+import { daysButton, scheduledTags, confirmRemoveLibItem, lockControls } from './ui-common.js?v=2026-11-08-2';
+import { makeSortable } from './dnd.js?v=2026-11-08-2';
 
 /**
  * opts：
@@ -27,6 +27,7 @@ export function createLibraryPanel(container, opts = {}) {
   head.addEventListener('dblclick', (e) => {
     const tabEl = e.target.closest('.tab');
     if (!tabEl || e.target.closest('.tab-x, .tab-rename')) return;
+    if (state.libRO) return;   // 鎖定：不能改名
     const tab = state.library?.tabs.find(t => t.id === tabEl.dataset.tabId);
     const nameEl = tabEl.querySelector('.tab-name');
     if (tab && nameEl) { e.preventDefault(); startRename(tabEl, nameEl, tab); }
@@ -51,7 +52,8 @@ export function createLibraryPanel(container, opts = {}) {
     const tabs = lib.tabs;
     const active = tabs.find(t => t.id === state.libTab) || tabs[0];
     state.libTab = active.id;
-    const canDelete = tabs.length > 1;   // 至少保留一個頁簽
+    const ro = !!state.libRO;
+    const canDelete = tabs.length > 1 && !ro;   // 至少保留一個頁簽；鎖定時不能刪除
 
     const tabBtns = tabs.map(t => {
       // 拖到別的頁簽按鈕上＝移到該頁簽
@@ -59,7 +61,7 @@ export function createLibraryPanel(container, opts = {}) {
       if (t.id !== active.id) sortables.push(makeSortable(drop, { group: { name: 'tp', pull: false, put: true }, sort: false }));
       return h('div', {
         class: 'tab lib-tab' + (t.id === active.id ? ' active' : ''), dataset: { tabId: t.id }, style: { '--c': LIB_COLORS[t.type] },
-        title: `${LIB_TYPE_LABEL[t.type]}頁簽；雙擊可改名`,
+        title: ro ? `${LIB_TYPE_LABEL[t.type]}頁簽` : `${LIB_TYPE_LABEL[t.type]}頁簽；雙擊可改名`,
         onClick: () => { if (state.libTab !== t.id) { state.libTab = t.id; render(); emit('backupView'); } },
       }, h('span', { class: 'tab-name' }, tabLabel(t)),
         canDelete ? h('button', { class: 'tab-x', title: '刪除頁簽', onClick: (e) => { e.stopPropagation(); deleteTab(t); } }, '×') : null,
@@ -68,7 +70,7 @@ export function createLibraryPanel(container, opts = {}) {
     const tools = (opts.tools?.() || []).filter(Boolean);
     head.replaceChildren(
       h('div', { class: 'tabs' }, ...tabBtns,
-        h('button', { class: 'icon-btn', title: '新增頁簽', onClick: addTabDialog }, '＋'),
+        ro ? null : h('button', { class: 'icon-btn', title: '新增頁簽', onClick: addTabDialog }, '＋'),
         ...(opts.headExtra?.() || [])),
       tools.length ? h('div', { class: 'backup-tools' }, ...tools) : null);
 
@@ -77,7 +79,7 @@ export function createLibraryPanel(container, opts = {}) {
     const ul = h('ul', { class: 'backup-list lib-list', dataset: { kind: 'backup', tab: active.id } },
       shown.map(it => h('li', {
         class: 'bitem lib-row' + (it.id === sel ? ' selected' : ''), dataset: { id: it.id },
-        title: opts.showScheduled ? '拖到行程可加入（備用庫保留原點）；拖拉可排序，拖到上方頁簽可移過去' : '拖拉可排序，拖到上方頁簽可移過去',
+        title: ro ? '已鎖定，只能檢視' : opts.showScheduled ? '拖到行程可加入（備用庫保留原點）；拖拉可排序，拖到上方頁簽可移過去' : '拖拉可排序，拖到上方頁簽可移過去',
         onClick: (e) => { if (!e.target.closest('input,button,textarea,a')) opts.onRowClick?.(it.id); },
         onMouseenter: opts.onRowEnter ? (e) => opts.onRowEnter(it.id, e.currentTarget) : null,
         onMouseleave: opts.onRowLeave ? () => opts.onRowLeave() : null,
@@ -99,6 +101,7 @@ export function createLibraryPanel(container, opts = {}) {
       group: { name: 'tp', pull: (to) => (to.el.dataset.kind === 'trip' ? 'clone' : true), put: true },
     }));
     body.replaceChildren(ul);
+    lockControls(body, ro);   // 鎖定：停留、天數、備註、刪除都停用
     if (!active.items.length) body.append(h('div', { class: 'empty-hint' }, opts.emptyHint || '這個頁簽還沒有地點；可用搜尋、點地圖加入'));
     else if (!shown.length) body.append(h('div', { class: 'empty-hint' }, `沒有符合目前篩選的點（這個頁簽共 ${active.items.length} 個）`));
   }

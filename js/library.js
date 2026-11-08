@@ -3,9 +3,9 @@
 // - 頁簽可自訂（新增、改名、刪除），每個頁簽記錄類型：景點／住宿／餐廳；點的類型跟著頁簽
 // - 預設頁簽：備用景點、備用住宿、備用餐廳
 import {
-  state, emit, mutate, DEFAULT_STAY, addStopToDay, insertIndexFor, selectStop, normDays, resolveIndex, effectiveDays, findStop,
-} from './state.js';
-import { uid, samePlace } from './utils.js';
+  state, emit, mutate, roBlocked, DEFAULT_STAY, addStopToDay, insertIndexFor, selectStop, normDays, resolveIndex, effectiveDays, findStop,
+} from './state.js?v=2026-11-08-2';
+import { uid, samePlace } from './utils.js?v=2026-11-08-2';
 
 export const LIB_TYPES = ['spot', 'hotel', 'food'];
 export const LIB_TYPE_LABEL = { spot: '景點', hotel: '住宿', food: '餐廳' };
@@ -124,6 +124,7 @@ export function buildLibrary(tabSpecs, entries) {
 // ---------- 編輯（經由 mutateLib 觸發存檔；規劃畫面與專案備用庫編輯畫面共用） ----------
 export function mutateLib(fn, { save = true } = {}) {
   if (!state.library) return;
+  if (save && state.libRO) { roBlocked(); emit('library'); return; }   // 鎖定：不修改，重繪還原畫面
   fn(state.library);
   state.library = normalizeLibrary(state.library);
   if (state.libSelected && !findLibItem(state.libSelected)) state.libSelected = null;
@@ -135,6 +136,7 @@ export function mutateLib(fn, { save = true } = {}) {
 
 /** 新增；已有同一地點就不加入，回傳既有點的 id 與 added:false */
 export function addLibItem(tabId, pt) {
+  if (state.libRO) { roBlocked(); return null; }   // 鎖定：回傳 null
   const dup = findSamePlace(pt);
   if (dup) return { id: dup.id, added: false };
   const tab = findLibTab(tabId) || state.library.tabs[0];
@@ -212,6 +214,8 @@ export function libToTrip(itemId, dayIdx, index = 'smart') {
  * 回傳 { existed, tabName }
  */
 export function stopToLibrary(stopId, tabId = null, pos = null, days = undefined) {
+  // 鎖定：行程或備用庫任一邊不能修改就整個不做（避免只改到一邊）
+  if (state.planRO || state.libRO) { roBlocked(); emit('plan'); emit('library'); return { blocked: true }; }
   const f = findStop(stopId); if (!f) return null;
   const stop = { ...f.stop };
   mutate(p => { const g = findStop(stopId, p); if (g) p.days[g.dayIdx].stops.splice(g.idx, 1); });

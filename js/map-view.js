@@ -1,17 +1,17 @@
 // 地圖：行程標記、備用庫標記（依頁簽類型配色）、路線、點擊新增與小視窗
-import { lib } from './maps-loader.js';
-import { MAP_ID } from '../config.js';
+import { lib } from './maps-loader.js?v=2026-11-08-2';
+import { MAP_ID } from '../config.js?v=2026-11-08-2';
 import {
   state, on, mutate, findStop, prevPoint, selectStop, DEFAULT_STAY,
   updateStop, moveStop, removeStop, backupDayFilter, itemForDay,
-} from './state.js';
-import { buildTripMarkers, markerEl, legTagEl, compareNodes, dayColor, LIB_COLORS, TYPE_GLYPH } from './markers.js';
-import { findLibItem, libToTrip, stopToLibrary, updateLibItem, moveLibItem, libTabForType } from './library.js';
-import { compareInfo } from './compare.js';
-import { h, selectEl, confirmDialog, toast, fmtShortDur } from './utils.js';
+} from './state.js?v=2026-11-08-2';
+import { buildTripMarkers, markerEl, legTagEl, compareNodes, dayColor, LIB_COLORS, TYPE_GLYPH } from './markers.js?v=2026-11-08-2';
+import { findLibItem, libToTrip, stopToLibrary, updateLibItem, moveLibItem, libTabForType } from './library.js?v=2026-11-08-2';
+import { compareInfo } from './compare.js?v=2026-11-08-2';
+import { h, selectEl, confirmDialog, toast, fmtShortDur } from './utils.js?v=2026-11-08-2';
 import {
-  buildAddPanel, typeOptions, dayOptions, tabOptions, dayAddRow, confirmRemoveLibItem, daysButton, dayPicker, scheduledTags,
-} from './ui-common.js';
+  buildAddPanel, typeOptions, dayOptions, tabOptions, dayAddRow, confirmRemoveLibItem, daysButton, dayPicker, scheduledTags, lockControls,
+} from './ui-common.js?v=2026-11-08-2';
 
 export async function createMapView(container, { getSchedule }) {
   const { Map, InfoWindow, Polyline } = await lib('maps');
@@ -86,7 +86,7 @@ export async function createMapView(container, { getSchedule }) {
         map, position: { lat: s0.lat, lng: s0.lng },
         // 「全部」顯示天-站（1-2）；單一天只顯示站號（2）；住宿、機場不變
         content: markerEl({ type: g.type, label: allDays ? g.label : g.short, name: withName ? s0.name : '', color: dayColor(g.dayIdx, n), selected, ring }),
-        gmpDraggable: true, gmpClickable: true, title: s0.name, zIndex: selected ? 1000 : ring ? 900 : 100,
+        gmpDraggable: !state.planRO, gmpClickable: true, title: s0.name, zIndex: selected ? 1000 : ring ? 900 : 100,
       });
       // 點標記＝選取（再點一次取消）；選取時開啟小視窗
       m.addEventListener('gmp-click', () => {
@@ -273,6 +273,7 @@ export async function createMapView(container, { getSchedule }) {
       h('div', { class: 'row' }, tabSel,
         h('button', { onClick: () => {
           const r = stopToLibrary(stopId, tabSel.value, null, backDays.get());
+          if (r?.blocked) return;
           info.close();
           if (r?.existed) toast(`備用庫已有「${stop.name}」，已從行程移除`);
         } }, '移回備用庫')),
@@ -282,6 +283,7 @@ export async function createMapView(container, { getSchedule }) {
           if (await confirmDialog(`確定從行程刪除「${stop.name}」？`, '刪除', true)) { removeStop(stopId); info.close(); }
         } }, '刪除')),
     );
+    lockControls(content, state.planRO);   // 鎖定：只能檢視
     openPopup(content, { lat: stop.lat, lng: stop.lng }, { kind: 'stop', id: stopId });
   }
 
@@ -306,11 +308,13 @@ export async function createMapView(container, { getSchedule }) {
       h('div', { class: 'row end' },
         h('button', { class: 'danger', onClick: async () => { if (await confirmRemoveLibItem(itemId)) info.close(); } }, '刪除')),
     );
+    lockControls(content, state.libRO);   // 鎖定：備用點只能檢視（加到行程另由 dayAddRow 依行程鎖定停用）
     openPopup(content, { lat: it.lat, lng: it.lng }, { kind: 'lib', id: itemId });
   }
 
   /** 新增地點小視窗（點地圖或搜尋） */
   function openAddPopup(pt) {
+    if (state.planRO && state.libRO) return;   // 全部鎖定：不能加入
     clearTemp();
     tempMarker = new AdvancedMarkerElement({ map, position: { lat: pt.lat, lng: pt.lng }, content: markerEl({ type: 'spot', label: '＋', color: '#222' }) });
     openPopup(buildAddPanel(pt, { onDone: () => { info.close(); clearTemp(); } }), { lat: pt.lat, lng: pt.lng });
@@ -338,6 +342,7 @@ export async function createMapView(container, { getSchedule }) {
   const renderAll = () => [closeStalePopup, renderTrip, renderLines, renderBackup, renderHover].forEach(f => safe(f)());
 
   offs.push(on('plan', renderAll));
+  offs.push(on('lock', () => { info.close(); clearTemp(); renderAll(); }));   // 鎖定切換：關閉編輯中的小視窗、標記可否拖曳
   offs.push(on('routes', () => { safe(renderLines)(); if (state.hoverBackup) safe(renderHover)(); }));
   offs.push(on('select', () => { safe(renderTrip)(); safe(renderLines)(); safe(renderBackup)(); }));
   // 選取只做強調，不縮放、不移動地圖（維持使用者目前的畫面）

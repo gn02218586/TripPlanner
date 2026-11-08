@@ -4,17 +4,18 @@
 // - openLibraryImport：專案備用庫編輯畫面的「匯入」（只有備用段落），可「加到現有」或「取代全部」
 // 舊格式的 [專案備用庫] 標題仍可讀，底下的段落和其他備用段落一起合併
 // 格式說明見 README「匯入／匯出格式」；欄位解析共用 text-format.js
-import { lib } from './maps-loader.js';
+import { lib } from './maps-loader.js?v=2026-11-08-2';
 import {
   state, newDay, makeStop, newLeg, normalizePlan, prevPoint, DEFAULT_STAY, START_AIRPORT_STAY, MODE_LABEL,
-} from './state.js';
-import { mergeIntoLibrary, buildLibrary, libraryTotal, LIB_TYPE_LABEL } from './library.js';
-import { createPlan, updateLibraryTx, createProject, updateProject } from './store.js';
-import { typeIcon, LIB_COLORS } from './markers.js';
-import { h, openModal, toast, fmtDate, addDays, parseHM, confirmDialog } from './utils.js';
+} from './state.js?v=2026-11-08-2';
+import { mergeIntoLibrary, buildLibrary, libraryTotal, LIB_TYPE_LABEL } from './library.js?v=2026-11-08-2';
+import { createPlan, updateLibraryTx, createProject, updateProject } from './store.js?v=2026-11-08-2';
+import { typeIcon, LIB_COLORS } from './markers.js?v=2026-11-08-2';
+import { isAdmin } from './accounts.js?v=2026-11-08-2';
+import { h, openModal, toast, fmtDate, addDays, parseHM, confirmDialog } from './utils.js?v=2026-11-08-2';
 import {
   TYPE_MAP, MODE_MAP, sectionType, parseTabSpec, parsePlaceField, parseDaysField, unescapeNote,
-} from './text-format.js';
+} from './text-format.js?v=2026-11-08-2';
 
 const QUERY_GAP_MS = 200;
 const MAX_CANDIDATES = 5;
@@ -623,6 +624,7 @@ const HELP_PLAN =
 // =====================================================================
 /** onDone：沒有建立規劃（只合併到備用庫或只更新專案設定）時呼叫，例如重新整理分支圖 */
 export function openImport(project, { onDone } = {}) {
+  if (project.locked && !isAdmin()) { toast('🔒 這個專案已被管理員鎖定，不能匯入', 'warn'); return; }
   importFlow({
     title: '匯入行程', example: EXAMPLE, help: HELP_PLAN,
     parse: (text) => {

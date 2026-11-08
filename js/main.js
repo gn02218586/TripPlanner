@@ -1,6 +1,7 @@
 // 進入點：檢查設定 → 登入 → 依網址（#/、#/p/專案、#/p/專案/規劃、#/lib/專案、#/accounts）切換畫面
-import { GOOGLE_MAPS_API_KEY, MAP_ID, firebaseConfig } from '../config.js';
-import { h } from './utils.js';
+import { GOOGLE_MAPS_API_KEY, MAP_ID, firebaseConfig } from '../config.js?v=2026-11-08-2';
+import { h } from './utils.js?v=2026-11-08-2';
+import { startVersionCheck, setUnsavedHooks } from './version.js?v=2026-11-08-2';
 
 const app = document.getElementById('app');
 
@@ -12,24 +13,33 @@ if (unconfigured) {
     h('h1', {}, '尚未設定'),
     h('p', {}, '請在 config.js 填入 GOOGLE_MAPS_API_KEY、MAP_ID 與 firebaseConfig（參考 config.example.js 與 README）。'))));
 } else {
+  startVersionCheck();   // 網站更新時提示重新整理（新舊檔案混用時也能提醒）
   start().catch(e => {
     console.error(e);
-    app.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'card error' }, '啟動失敗：' + e.message)));
+    app.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'card' },
+      h('p', { class: 'error' }, '啟動失敗：' + e.message),
+      h('div', { class: 'row' }, h('button', { class: 'primary', onClick: () => location.reload() }, '重新整理')),
+      h('p', { class: 'small muted' }, '如果一直出現，請按 Ctrl + F5（Mac：Cmd + Shift + R）強制重新整理。'))));
   });
 }
 
 async function start() {
-  const { auth, onAuthStateChanged } = await import('./firebase.js');
-  const { state } = await import('./state.js');
-  const { getProject } = await import('./store.js');
-  const { mountLogin } = await import('./screens/login.js');
-  const { mountProjects } = await import('./screens/projects.js');
-  const { mountPlanner } = await import('./screens/planner.js');
-  const { mountLibrary } = await import('./screens/library.js');
-  const { refreshNickname } = await import('./screens/common.js');
-  const { mountAccounts } = await import('./screens/accounts.js');
-  const { startPresence, stopPresence, startPresenceWatch, stopPresenceWatch, setPresenceScreen } = await import('./presence.js');
-  const { isAdmin } = await import('./accounts.js');
+  const { auth, onAuthStateChanged } = await import('./firebase.js?v=2026-11-08-2');
+  const { state } = await import('./state.js?v=2026-11-08-2');
+  const { getProject, hasUnsaved, hasUnsavedLibrary, saveNow, saveLibraryNow } = await import('./store.js?v=2026-11-08-2');
+  // 「網站已更新」重新整理前：先把規劃與備用庫尚未儲存的修改存好
+  setUnsavedHooks({
+    hasUnsaved: () => hasUnsaved() || hasUnsavedLibrary(),
+    saveAll: () => Promise.all([saveNow(), saveLibraryNow()]),
+  });
+  const { mountLogin } = await import('./screens/login.js?v=2026-11-08-2');
+  const { mountProjects } = await import('./screens/projects.js?v=2026-11-08-2');
+  const { mountPlanner } = await import('./screens/planner.js?v=2026-11-08-2');
+  const { mountLibrary } = await import('./screens/library.js?v=2026-11-08-2');
+  const { refreshNickname } = await import('./screens/common.js?v=2026-11-08-2');
+  const { mountAccounts } = await import('./screens/accounts.js?v=2026-11-08-2');
+  const { startPresence, stopPresence, startPresenceWatch, stopPresenceWatch, setPresenceScreen } = await import('./presence.js?v=2026-11-08-2');
+  const { isAdmin } = await import('./accounts.js?v=2026-11-08-2');
 
   let cleanup = null;
   let token = 0;

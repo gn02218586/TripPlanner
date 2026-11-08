@@ -1,6 +1,6 @@
 // 單一資料來源：目前專案、規劃與畫面狀態；所有修改經由 mutate()，再以事件通知地圖與清單。
 // 備用庫只有一份（每個專案一份，所有規劃共用），資料與操作在 library.js
-import { uid, addDays, samePlace, clone } from './utils.js';
+import { uid, addDays, samePlace, clone, toast } from './utils.js?v=2026-11-08-2';
 
 export const state = {
   user: null,
@@ -19,7 +19,20 @@ export const state = {
   libSelected: null,      // 編輯畫面選取的備用點 id
   backupDayMode: 'day',   // 右上選了某一天時，右下備用庫：'day'＝只顯示本日與不限、'all'＝全部
   libDayFilter: 'all',    // 專案備用庫編輯畫面的天數篩選：'all'、'none'（不限）或 1 起算的天數
+  // 管理員鎖定（一般帳號唯讀）：planRO＝目前規劃的行程不能修改、libRO＝專案備用庫不能修改
+  planRO: false,
+  libRO: false,
+  projectLocked: false,   // 目前專案是否被鎖定（即時同步）
+  planLocked: false,      // 目前規劃是否被鎖定（即時同步）
 };
+
+/** 唯讀時擋下修改：提示一次（短時間內不重複） */
+let roToastAt = 0;
+export function roBlocked() {
+  if (Date.now() - roToastAt < 2500) return;
+  roToastAt = Date.now();
+  toast('🔒 已被管理員鎖定，只能檢視', 'warn');
+}
 
 const listeners = {};
 export function on(evt, fn) {
@@ -42,6 +55,7 @@ export const START_AIRPORT_STAY = 45;
 /** 修改規劃：fn(plan) 直接改，之後正規化並通知；save=false 時不觸發存檔 */
 export function mutate(fn, { save = true } = {}) {
   if (!state.plan) return;
+  if (save && state.planRO) { roBlocked(); emit('plan'); return; }   // 鎖定：不修改，重繪還原畫面
   fn(state.plan);
   normalizePlan(state.plan, state.project);
   if (save) emit('dirty');

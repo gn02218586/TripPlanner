@@ -5,10 +5,10 @@
 // 權限（firestore.rules）：每個帳號只能建立／更新／刪除 email 等於自己的文件；只有管理員能讀取與刪除全部
 import {
   db, collection, doc, setDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, where, writeBatch, serverTimestamp,
-} from './firebase.js';
-import { state, emit, on } from './state.js';
-import { currentEmail } from './accounts.js';
-import { uid } from './utils.js';
+} from './firebase.js?v=2026-11-08-2';
+import { state, emit, on } from './state.js?v=2026-11-08-2';
+import { currentEmail } from './accounts.js?v=2026-11-08-2';
+import { uid } from './utils.js?v=2026-11-08-2';
 
 export const PRESENCE_SESSION = uid() + uid();      // 這個分頁的工作階段 id
 const REPORT_MS = 2 * 60 * 1000;
@@ -25,6 +25,16 @@ export function browserName(ua = navigator.userAgent) {
 }
 const BROWSER = browserName();
 
+// 裝置 id：每個瀏覽器一個（存在 localStorage；同一瀏覽器的多個分頁共用）。無法儲存時用這個分頁的 id
+const DEVICE_KEY = 'tripplanner.deviceId';
+export const DEVICE_ID = (() => {
+  try {
+    let v = localStorage.getItem(DEVICE_KEY);
+    if (!v) { v = uid() + uid(); localStorage.setItem(DEVICE_KEY, v); }
+    return v;
+  } catch { return 'tab-' + PRESENCE_SESSION; }
+})();
+
 // ---------- 自己的回報 ----------
 let running = false;
 let created = false;     // 這個工作階段的文件是否已建立（之後用 updateDoc，讓規則檢查「只能改自己的」）
@@ -36,7 +46,7 @@ const ref = () => doc(db, 'presence', PRESENCE_SESSION);
 
 function payload() {
   return {
-    email, nickname: state.nickname || '', browser: BROWSER,
+    email, nickname: state.nickname || '', browser: BROWSER, deviceId: DEVICE_ID,
     screen: screen.kind, screenText: screen.text,
     projectName: screen.projectName || null, planName: screen.planName || null,
     lastActive: serverTimestamp(),
@@ -134,7 +144,31 @@ export function stopPresenceWatch() {
 }
 
 export const isOnline = (p, now = Date.now()) => now - p.at < ONLINE_MS;
-export const onlineCount = () => presenceList.filter(p => isOnline(p)).length;
+
+/**
+ * 依「帳號＋裝置」合併（沒有 deviceId 的舊紀錄：每個分頁當成一個裝置）
+ * 回傳 [{ key, email, tabs(依最近活動排序), at, latest, nickname, browser, self }]，依最近活動排序
+ */
+export function deviceGroups(list = presenceList) {
+  const m = new Map();
+  for (const p of list) {
+    const key = `${p.email}|${p.deviceId || 'tab-' + p.id}`;
+    if (!m.has(key)) m.set(key, { key, email: p.email, tabs: [] });
+    m.get(key).tabs.push(p);
+  }
+  return [...m.values()].map(g => {
+    g.tabs.sort((a, b) => b.at - a.at);
+    g.latest = g.tabs[0];
+    g.at = g.latest.at;
+    g.nickname = g.latest.nickname;
+    g.browser = g.latest.browser;
+    g.self = g.tabs.some(t => t.self);
+    return g;
+  }).sort((a, b) => b.at - a.at);
+}
+
+/** 線上裝置數（同一個瀏覽器開多個分頁只算一個） */
+export const onlineCount = () => deviceGroups(presenceList.filter(p => isOnline(p))).length;
 
 /** 各帳號的最後上線時間 Map<email, 毫秒> */
 export function lastSeenByEmail() {

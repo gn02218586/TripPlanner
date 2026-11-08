@@ -1,12 +1,12 @@
 // 規劃畫面右下：備用庫（每個專案一份，所有規劃共用；可直接編輯）
 // 「本日｜全部」依天篩選、地圖顯示備用點、隱藏已排入；滑鼠停 0.5 秒顯示與選取點的路線比較
-import { state, on, emit, scheduledDays, backupDayFilter, itemForDay } from './state.js';
-import { findLibItem } from './library.js';
-import { compareNodes } from './markers.js';
-import { h } from './utils.js';
-import { requestCompare, compareInfo } from './compare.js';
-import { createLibraryPanel } from './library-panel.js';
-import { dayTint } from './ui-common.js';
+import { state, on, emit, scheduledDays, backupDayFilter, itemForDay } from './state.js?v=2026-11-08-2';
+import { findLibItem } from './library.js?v=2026-11-08-2';
+import { compareNodes } from './markers.js?v=2026-11-08-2';
+import { h } from './utils.js?v=2026-11-08-2';
+import { requestCompare, compareInfo } from './compare.js?v=2026-11-08-2';
+import { createLibraryPanel } from './library-panel.js?v=2026-11-08-2';
+import { dayTint } from './ui-common.js?v=2026-11-08-2';
 
 const HIDE_KEY = 'tripplanner.hideScheduled';
 const loadHide = () => { try { return localStorage.getItem(HIDE_KEY) === '1'; } catch { return false; } };
@@ -95,6 +95,7 @@ export function createBackupView(container, { mapView, onToggleCollapse }) {
   // 行程變動（已排入標籤）、備用庫變動（自己或別人修改）、右上切換天（依天篩選）
   offs.push(on('plan', panel.render));
   offs.push(on('library', panel.render));
+  offs.push(on('lock', panel.render));
   offs.push(on('select', panel.render));
   offs.push(on('routes', renderCompare));
   offs.push(on('stopSelect', () => {

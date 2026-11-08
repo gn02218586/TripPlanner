@@ -16,12 +16,16 @@ TripPlanner 是一個純前端的靜態網站，用來在地圖上規劃多天�
 ```
 TripPlanner/
 ├─ index.html            進入頁（含 <meta name="robots" content="noindex">）
+├─ version.json          網站版本號（由 tools/bump_version.py 更新）
+├─ CLAUDE.md             給 Claude Code 的工作規則（上傳前更新版本號等）
 ├─ config.example.js     設定範本
 ├─ config.js             你的金鑰設定（自行填入）
 ├─ firestore.rules       Firestore 安全規則（貼到 Firebase 主控台）
 ├─ css/style.css
+├─ tools/bump_version.py 更新版本號（每次上傳前執行）
 └─ js/
    ├─ main.js            進入點與網址路由
+   ├─ version.js         版本常數 APP_VERSION、檢查網站是否已更新
    ├─ firebase.js        Firebase 初始化（CDN 模組版 SDK）
    ├─ maps-loader.js     Google Maps 動態載入（importLibrary）
    ├─ state.js           單一資料來源與所有修改動作
@@ -181,6 +185,7 @@ Advanced Markers（新式標記）需要 Map ID。
    1. 到「Firestore Database → 規則」，把 TripPlanner 資料夾裡 `firestore.rules` 的內容整段貼上，按「發布」。
    2. 詳細位置：Firebase 主控台 → 選這個專案 → 左側「建構（Build）」→「Firestore Database」→ 上方「規則（Rules）」頁簽 → 把原本內容全部取代 → 按「發布（Publish）」。
    3. 這份規則的效果是：管理員可讀寫全部；一般帳號只能讀寫「擁有帳號」等於自己的專案與其底下所有資料；未登入不能讀寫任何資料。
+      - 鎖定（locked）：專案鎖定時一般帳號只能讀取專案、規劃與備用庫；規劃鎖定時一般帳號不能修改、刪除該規劃及其歷史；路線快取不受影響；只有管理員能變更鎖定。
       - 線上使用者（presence）：每個帳號只能建立、更新、刪除自己的文件；只有管理員能讀取與刪除全部。
       - 帳號登記（accounts）：只有管理員能讀寫。
    4. 不需要安裝 firebase CLI，也不需要 `firebase.json`。
@@ -208,16 +213,39 @@ Advanced Markers（新式標記）需要 Map ID。
   - 登記帳號組：在帳號管理畫面或管理員首頁按「＋ 新增帳號組」，輸入帳號名稱（只能用英文小寫、數字、連字號）和備註（例如「2028 日本團」）。
   - 登記完成會顯示完整 Email（可複製）和「開啟 Firebase 使用者頁面」按鈕：到 Firebase 點「新增使用者」→ 貼上 Email → 設定密碼 → 把帳號名稱和密碼給旅伴。
     （網站無法直接建立 Firebase 登入帳號，這一步要在 Firebase 主控台做。）
-  - 清單顯示帳號名稱、備註（可直接修改）、專案數量、最後上線、登記時間；「刪除登記」只會刪除網站上的登記，Firebase 的登入帳號請到 Firebase 停用或刪除。
+  - 清單顯示帳號名稱、備註（可直接修改）、專案數量、最後上線、登記時間。
+  - 「刪除帳號組」：
+    - 帳號沒有專案：確認後直接刪除登記。
+    - 帳號還有專案：對話框列出專案名稱，必須選一種處理方式：「轉移給其他帳號」（下拉選單選已登記帳號或「未歸屬」），
+      或「連同專案一起刪除」（要輸入帳號名稱確認；每個專案先刪子集合、最後刪專案）。專案全部處理完才刪除登記，所以不會再被自動補登記回來；
+      中途失敗時登記保留，可以再試一次。
+    - 網站只刪登記與專案，Firebase 的登入帳號請到 Firebase 停用或刪除（對話框有連結）。
+    - 管理員帳號不能刪除。
   - 開啟管理員首頁或帳號管理時，會自動把現有專案的擁有帳號（不含管理員）補登記進清單，備註留空。
   - 管理員首頁的分組標題顯示「帳號名稱（備註）」；已登記但還沒有專案的帳號也會顯示分組。每組旁有「＋ 新建專案」「匯入成新專案」，建立的專案擁有帳號直接設為這一組。
   - 轉移專案、複製專案到其他帳號時，目標帳號用下拉選單選擇已登記帳號（也可以選「其他…」手動輸入）。
 - **線上使用者**（右上角「線上 N」，只有管理員）：
-  - 每個瀏覽器分頁登入後，每 2 分鐘回報一次上線狀態（帳號、暱稱、目前畫面、瀏覽器）；分頁切到背景時暫停，回到前景或切換畫面時立刻回報；登出時刪除。
-  - 「線上」是最後活動在 3 分鐘內的分頁，依帳號分組；「最近 7 天」列出其他分頁的最後上線時間。名單即時更新，自己的分頁標示「（你）」。
+  - 每個瀏覽器分頁登入後，每 2 分鐘回報一次上線狀態（帳號、暱稱、目前畫面、瀏覽器、裝置 id）；分頁切到背景時暫停，回到前景或切換畫面時立刻回報；登出時刪除。
+  - 裝置 id：每個瀏覽器第一次開網站時產生，存在 localStorage（`tripplanner.deviceId`），同一個瀏覽器的分頁共用。
+  - 名單依帳號分組，同一個帳號＋同一個裝置合併成一列：「暱稱 — N 個分頁」、最近活動分頁的畫面和時間；點選可展開看各分頁的畫面。
+  - 「線上 N」的 N 是線上**裝置**數（最後活動在 3 分鐘內）；「最近 7 天」列出其他裝置的最後上線時間。名單即時更新，自己標示「（你）」。
+  - 沒有裝置 id 的舊紀錄，每個分頁當成一個裝置。
   - 管理員開啟名單時，會順便刪除超過 7 天的紀錄。
   - 用量：每個開著的分頁每小時寫入約 30 次；管理員開著網站時，每次寫入會多讀 1 次（10 個分頁約每小時 300 次讀取，遠低於免費額度）。
+- **鎖定編輯**（只有管理員能鎖定、解除）：
+  - 鎖定專案：首頁分支圖或規劃畫面的「專案設定」→「鎖定（管理員）」→ 勾選「🔒 鎖定專案」→ 儲存設定。
+  - 鎖定規劃：分支圖的規劃卡片上的「鎖定規劃」開關，或規劃畫面頂部的「🔒 鎖定規劃」開關（立即生效）。
+  - 被鎖定的專案卡片、規劃卡片顯示 🔒。
+  - 鎖定專案後，一般帳號不能修改專案設定（設定畫面只能檢視）、備用庫與這個專案的所有規劃，也不能新增、複製、匯入、刪除規劃或刪除專案。
+  - 鎖定規劃後，一般帳號不能修改這個規劃的行程、改名、刪除或還原歷史；備用庫和其他規劃不受影響（這個規劃仍可複製成新規劃，新的不鎖定）。
+  - 一般帳號被鎖定時，畫面頂部顯示「🔒 已被管理員鎖定，只能檢視」；拖拉、輸入框、新增、刪除、↩ 移回等都停用，
+    但仍可以看地圖、選取、路線比較、匯出。路線快取不受鎖定影響（檢視時仍會計算並儲存路線）。
+  - 管理員仍可編輯被鎖定的內容，畫面頂部顯示「🔒 已鎖定（管理員可編輯）」。
+  - 一般帳號正在編輯時被鎖定：即時同步收到後立刻切換成唯讀；尚未儲存的修改會提示「已被鎖定，修改無法儲存」並載入雲端最新版本。解除鎖定後自動恢復可編輯。
+  - 雲端規則也會擋：一般帳號在專案鎖定時不能更新專案、不能寫入規劃與備用庫；規劃鎖定時不能更新或刪除該規劃及其歷史；只有管理員能變更 `locked`。
+  - 複製專案或規劃產生的複本一律不鎖定。沒有 `locked` 欄位的舊資料視為未鎖定。
 - **刪除專案**：在首頁分支圖的「專案設定」最下方。會先刪除所有規劃（含歷史）、路線快取與備用庫，最後才刪專案本身。
+  一般帳號：專案或其中任何規劃被鎖定時不能刪除（刪除前就會檢查）。
   刪除與複製要處理的子集合列在 `js/store.js` 的 `PROJECT_SUBCOLLECTIONS`，之後新增子集合時要加進去。
 - **從單一共用帳號改成多帳號的順序**：
   1. 在 Authentication 建立管理員與各團帳號。
@@ -229,16 +257,17 @@ Advanced Markers（新式標記）需要 Map ID。
 ```
 projects/{projectId}
   name, ownerEmail（擁有帳號，小寫）, creatorNickname, bounds{n,s,e,w}, startDate, numDays, defaultMode, winterFactor,
-  defaultCharterHours, latestEndTime, defaultStart{點}, defaultEnd{點}, createdAt
+  defaultCharterHours, latestEndTime, defaultStart{點}, defaultEnd{點}, createdAt, locked（管理員鎖定；沒有＝未鎖定）
 projects/{projectId}/routeCache/{key}     key = 起點lat,lng_終點lat,lng_交通方式（6 位小數）
   distanceMeters, durationSec, noRoute, path（encoded polyline）, createdAt
 projects/{projectId}/plans/{planId}
-  name, creator, lastEditor, updatedAt, version, lastSessionId, days[], backupMigrated
+  name, creator, lastEditor, updatedAt, version, lastSessionId, days[], backupMigrated, locked（管理員鎖定；沒有＝未鎖定）
   （舊版每個規劃有自己的 backup{tabs[]}；開啟專案時會自動合併到備用庫並清除，backupMigrated＝已轉移）
 projects/{projectId}/plans/{planId}/history/{autoId}
   savedAt, editor, snapshot{days, backup}
 presence/{工作階段 id}                    線上使用者（每個瀏覽器分頁一份）
-  email, nickname, screen（home|plan|library|accounts）, screenText, projectName, planName, browser, lastActive（伺服器時間）, startedAt
+  email, nickname, screen（home|plan|library|accounts）, screenText, projectName, planName, browser, deviceId（瀏覽器的裝置 id）,
+  lastActive（伺服器時間）, startedAt
 accounts/{帳號名稱}                        帳號登記（其他網域的帳號以完整 Email 當 id）
   name, email, note, createdAt
 projects/{projectId}/library/main         備用庫（每個專案一份，該專案所有規劃共用）
@@ -266,6 +295,15 @@ projects/{projectId}/library/main         備用庫（每個專案一份，該�
 5. 確認第 2-4 節的 HTTP 網址限制，以及第 4 節的授權網域，都已加入這個網址。
 
 > 程式內一律使用相對路徑，所以 repo 名稱改了也能運作。改名後記得同步更新金鑰的網址限制。
+
+### 版本號（防止新舊檔案混用）
+- `index.html` 載入的 CSS／JS，以及 JS 檔案之間的所有 import，網址都帶 `?v=版本號`，改版後瀏覽器一定會抓新檔案。
+- 版本號存在 `version.json` 與 `js/version.js` 的 `APP_VERSION`，格式是「日期-序號」（例如 `2026-11-08-1`）。
+- **每次上傳前執行** `python tools/bump_version.py`：今天第一次＝`日期-1`，同一天再執行就遞增；會一次更新 version.json、APP_VERSION、index.html 與所有 import。
+  不要手動改 `?v=`：所有檔案必須是同一個版本號，否則同一個模組會被載入兩份。也可以指定：`python tools/bump_version.py --set 2026-11-08-3`。
+- 網站開著時，每 5 分鐘和切回分頁時會用不快取的方式讀 `version.json`；版本不同時，畫面上方顯示「網站已更新，請按這裡重新整理」。
+  按下後如果有尚未儲存的修改，會先存檔、等存好才重新載入；存不了（衝突或失敗）時會提示，不會重新載入。
+- 「啟動失敗」畫面有「重新整理」按鈕；一直出現時請按 Ctrl + F5 強制重新整理。
 
 ---
 

@@ -461,3 +461,33 @@ a.small-btn.btn-link { padding: 2px 8px; font-size: 12px; }
 .group-head-row .group-head { border-bottom: none; flex: 1 1 auto; }
 .group-actions { display: flex; gap: 4px; }
 .empty-group { padding: 6px 4px; }
+
+/* ---------- 管理員鎖定 ---------- */
+.lock-bar { padding: 6px 12px; background: #fdecea; color: #a3261c; border-bottom: 1px solid #f1b8b3; font-size: 13px; font-weight: 600; }
+.lock-bar.admin { background: #eef3fd; color: #1a56c4; border-bottom-color: #c6d6f7; font-weight: 500; }
+.pf-form .lock-bar { border-radius: 6px; border: 1px solid #f1b8b3; margin-bottom: 8px; }
+.pf-form .lock-bar.admin { border-color: #c6d6f7; }
+.lock-icon { margin-right: 4px; }
+.lock-toggle { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer; }
+.lock-note { color: #a3261c; width: 100%; }
+.plan-card.locked { border-color: #f1b8b3; }
+/* 唯讀：停用的控制項淡化；行程點的 ↩ × 直接隱藏 */
+.is-ro input:disabled, .is-ro select:disabled, .is-ro textarea:disabled, .is-ro button:disabled { opacity: .55; cursor: not-allowed; }
+.is-ro .stop-btns, .is-ro .tab-x { display: none; }
+.planner .plan-name:disabled { cursor: default; color: inherit; opacity: 1; }
+
+/* ---------- 刪除帳號組 ---------- */
+.warn-box { background: var(--warn-bg); color: var(--warn); border: 1px solid #f0d58c; border-radius: 6px; padding: 8px 10px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.sub-box { margin: 2px 0 8px 24px; display: flex; flex-direction: column; gap: 6px; }
+.proj-names { margin: 4px 0 8px; padding-left: 20px; max-height: 160px; overflow: auto; }
+
+/* ---------- 線上名單（依裝置合併） ---------- */
+.online-table .dev-row.clickable { cursor: pointer; }
+.online-table .dev-row.clickable:hover { background: #f5f7fa; }
+.online-table .tab-row td { color: #555; background: #fafbfc; }
+.dev-caret { color: #888; }
+
+/* ---------- 網站已更新 ---------- */
+.update-banner { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 3000; max-width: calc(100vw - 32px);
+  background: #1a56c4; color: #fff; border: none; border-radius: 20px; padding: 8px 18px; font-size: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer; }
+.update-banner:hover { background: #1647a3; }

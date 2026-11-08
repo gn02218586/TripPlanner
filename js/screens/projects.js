@@ -1,12 +1,12 @@
 // 專案列表＋規劃分支圖：左側專案卡片，點選後右側（窄螢幕在卡片下方）展開該專案的規劃分支
-import { listProjects } from '../store.js';
-import { h, fmtDate, fmtDateTime } from '../utils.js';
-import { openProjectForm } from './project-form.js';
-import { topBar } from './common.js';
-import { buildBranch } from './plans.js';
-import { openImportProject } from '../import.js';
-import { isAdmin, accountLabel, isAdminEmail } from '../accounts.js';
-import { listAccounts, ensureAccountsFromProjects, accountTitle, openRegisterDialog } from '../admin.js';
+import { listProjects } from '../store.js?v=2026-11-08-2';
+import { h, fmtDate, fmtDateTime } from '../utils.js?v=2026-11-08-2';
+import { openProjectForm } from './project-form.js?v=2026-11-08-2';
+import { topBar } from './common.js?v=2026-11-08-2';
+import { buildBranch } from './plans.js?v=2026-11-08-2';
+import { openImportProject } from '../import.js?v=2026-11-08-2';
+import { isAdmin, accountLabel, isAdminEmail } from '../accounts.js?v=2026-11-08-2';
+import { listAccounts, ensureAccountsFromProjects, accountTitle, openRegisterDialog } from '../admin.js?v=2026-11-08-2';
 
 const STUB_Y = 30;   // 分支連接線在第一張規劃卡片的高度（與 CSS 一致）
 
@@ -76,7 +76,7 @@ export async function mountProjects(app, expandId = null) {
       for (const p of list) {
         const isOpen = p.id === openId;
         const card = h('div', { class: 'card list-item proj-card' + (isOpen ? ' open' : ''), title: isOpen ? '點選收起' : '點選展開規劃', onClick: () => toggle(p.id) },
-          h('div', { class: 'li-title' }, p.name, h('span', { class: 'proj-caret' }, isOpen ? (narrow ? '▾' : '▸') : '')),
+          h('div', { class: 'li-title' }, p.locked ? h('span', { class: 'lock-icon', title: '已被管理員鎖定' }, '🔒') : null, p.name, h('span', { class: 'proj-caret' }, isOpen ? (narrow ? '▾' : '▸') : '')),
           h('div', { class: 'small muted' },
             `${fmtDate(p.startDate)} 起 ${p.numDays} 天・建立者 ${p.creatorNickname || '—'}・${fmtDateTime(p.createdAt)}`));
         cards.push(card);

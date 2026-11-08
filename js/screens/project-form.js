@@ -1,10 +1,11 @@
 // 建立專案／專案設定：地圖範圍（搜尋區域 viewport 或鎖定目前畫面）、日期、天數與各項預設值
-import { lib } from '../maps-loader.js';
-import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL, deriveCharterTable } from '../state.js';
-import { createProject, updateProject, deleteProject, copyProjectTo } from '../store.js';
-import { h, selectEl, toast, num, fmtDate, addDays, confirmDialog, promptDialog, openModal } from '../utils.js';
-import { isAdmin } from '../accounts.js';
-import { accountPicker, accountTitle } from '../admin.js';
+import { lib } from '../maps-loader.js?v=2026-11-08-2';
+import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL, deriveCharterTable } from '../state.js?v=2026-11-08-2';
+import { createProject, updateProject, deleteProject, copyProjectTo } from '../store.js?v=2026-11-08-2';
+import { h, selectEl, toast, num, fmtDate, addDays, confirmDialog, promptDialog, openModal } from '../utils.js?v=2026-11-08-2';
+import { isAdmin } from '../accounts.js?v=2026-11-08-2';
+import { accountPicker, accountTitle } from '../admin.js?v=2026-11-08-2';
+import { lockControls } from '../ui-common.js?v=2026-11-08-2';
 
 /**
  * onDeleted：有傳入時顯示「刪除專案」（只在首頁提供；地圖畫面開著規劃時不能刪）
@@ -14,7 +15,11 @@ import { accountPicker, accountTitle } from '../admin.js';
 export async function openProjectForm({ project = null, plan = null, onSaved, onDeleted = null, onCopied = null, ownerEmail = null }) {
   const isNew = !project;
   const admin = isAdmin();
-  const canEditBounds = isNew || admin || project.creatorNickname === state.nickname;
+  // 一般帳號：專案被管理員鎖定時只能檢視
+  const ro = !isNew && !admin && !!project.locked;
+  const canEditBounds = !ro && (isNew || admin || project.creatorNickname === state.nickname);
+  // 管理員：鎖定專案（儲存設定時一起寫入）
+  const lockCb = !isNew && admin ? h('input', { type: 'checkbox', checked: !!project.locked }) : null;
   // 擁有帳號（只有管理員看得到、可轉移）：已登記帳號的下拉選單＋「其他…」＋「未歸屬」
   const oldOwner = String(project?.ownerEmail || '').toLowerCase();
   const ownerPick = !isNew && admin ? accountPicker({ value: oldOwner, allowNone: true }) : null;
@@ -78,6 +83,8 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
   const endBox = h('div', { class: 'pt-box' });
 
   const form = h('div', { class: 'pf-form scroll' },
+    ro ? h('div', { class: 'lock-bar' }, '🔒 已被管理員鎖定，只能檢視') : null,
+    !isNew && admin && project.locked ? h('div', { class: 'lock-bar admin' }, '🔒 已鎖定（管理員可編輯）') : null,
     isNew && ownerEmail ? h('div', { class: 'small owner-note' }, `擁有帳號：${accountTitle(ownerEmail)}（${ownerEmail}）`) : null,
     h('label', { class: 'row col' }, '專案名稱', nameIn),
     h('fieldset', {},
@@ -87,7 +94,7 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
           h('div', { class: 'small muted' }, '(1) 搜尋區域名稱，使用其範圍；或 (2) 把左邊地圖移到想要的位置後按「鎖定目前畫面範圍」。'),
           h('div', { class: 'region-search' }),
           h('button', { onClick: lockView }, '鎖定目前畫面範圍'))
-        : h('div', { class: 'small muted' }, `只有專案建立者（${project.creatorNickname}）可以修改地圖範圍。`),
+        : h('div', { class: 'small muted' }, ro ? '已鎖定，不能修改地圖範圍。' : `只有專案建立者（${project.creatorNickname}）可以修改地圖範圍。`),
       boundsText),
     h('div', { class: 'grid2' },
       h('label', {}, '開始日期', dateIn),
@@ -104,6 +111,10 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
     h('fieldset', {}, h('legend', {}, '預設起點（Day 1 第一點）'), startBox),
     h('fieldset', {}, h('legend', {}, '預設終點（最後一天最後一點）'), endBox),
     !isNew ? h('div', { class: 'small muted' }, '預設起訖點只影響之後新建的空白規劃。') : null,
+    lockCb ? h('fieldset', { class: 'admin-only' },
+      h('legend', {}, '鎖定（管理員）'),
+      h('label', { class: 'row' }, lockCb, '🔒 鎖定專案'),
+      h('div', { class: 'small muted' }, '鎖定後一般帳號只能檢視：不能修改專案設定、備用庫與所有規劃，也不能新增、複製、匯入、刪除規劃或刪除專案。管理員仍可編輯。按「儲存設定」後生效。')) : null,
     !isNew && admin ? h('fieldset', { class: 'admin-only' },
       h('legend', {}, '擁有帳號（管理員）'),
       h('div', { class: 'small muted' }, `目前：${oldOwner ? accountTitle(oldOwner) : '未歸屬'}。轉移後只有新的擁有帳號與管理員看得到這個專案。請確認帳號已在 Firebase Authentication 建立。`),
@@ -111,16 +122,16 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
       h('div', { class: 'row' },
         h('button', { onClick: openCopyDialog, title: '把整個專案（設定、規劃、專案備用庫、路線快取）複製一份給指定帳號' }, '複製到其他帳號'),
         h('span', { class: 'small muted' }, '原專案保留不變；歷史快照不複製'))) : null,
-    !isNew && onDeleted ? h('fieldset', { class: 'danger-zone' },
+    !isNew && onDeleted && !ro ? h('fieldset', { class: 'danger-zone' },
       h('legend', {}, '刪除專案'),
       h('div', { class: 'small muted' }, '會一併刪除所有規劃、歷史紀錄、路線快取與專案備用庫，無法復原。'),
       h('button', { class: 'danger', onClick: removeProject }, '刪除專案')) : null,
-    h('div', { class: 'row end' },
-      h('button', { onClick: close }, '取消'),
-      h('button', { class: 'primary', onClick: save }, isNew ? '建立專案' : '儲存設定')));
+    h('div', { class: 'row end ro-keep' },
+      h('button', { onClick: close }, ro ? '關閉' : '取消'),
+      ro ? null : h('button', { class: 'primary', onClick: save }, isNew ? '建立專案' : '儲存設定')));
 
   overlay.append(h('div', { class: 'modal modal-full' },
-    h('div', { class: 'modal-head' }, h('h3', {}, isNew ? '建立專案' : '專案設定'), h('button', { class: 'icon-btn', onClick: close }, '✕')),
+    h('div', { class: 'modal-head' }, h('h3', {}, isNew ? '建立專案' : ro ? '專案設定（只能檢視）' : '專案設定'), h('button', { class: 'icon-btn', onClick: close }, '✕')),
     h('div', { class: 'pf-grid' }, mapDiv, form)));
   document.body.append(overlay);
 
@@ -169,7 +180,7 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
     const pac = new PlaceAutocompleteElement({ requestedLanguage: 'zh-TW' });
     if (bounds) pac.locationRestriction = { north: bounds.n, south: bounds.s, east: bounds.e, west: bounds.w };
     pac.setAttribute('placeholder', '搜尋地點（先設定地圖範圍）');
-    pointPickers.push(pac);
+    if (!ro) pointPickers.push(pac);
     const info = h('div', { class: 'row' });
     const draw = () => {
       const p = get();
@@ -186,11 +197,13 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
       set({ name, placeId: place.id, lat: place.location.lat(), lng: place.location.lng(), type: 'airport' });
       draw();
     });
-    box.append(info, pac);
+    box.append(info);
+    if (!ro) box.append(pac);   // 鎖定：不能改起訖點
     draw();
   }
   pointPicker(startBox, () => defaultStart, (v) => { defaultStart = v; });
   pointPicker(endBox, () => defaultEnd, (v) => { defaultEnd = v; });
+  lockControls(form, ro);   // 鎖定：所有欄位停用（關閉按鈕除外）
 
   async function save() {
     const data = {
@@ -213,6 +226,7 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
     if (!(data.winterFactor > 0)) return toast('冬季係數需大於 0', 'warn');
     if (data.winterPerDay && data.winterFactorsByDay.some(v => !(v > 0))) return toast('每天的冬季係數需大於 0', 'warn');
     if (canEditBounds) data.bounds = bounds;
+    if (lockCb) data.locked = lockCb.checked;   // 管理員：鎖定專案
     // 管理員轉移擁有帳號：轉移前確認
     if (!isNew && admin) {
       const newOwner = ownerPick.get();

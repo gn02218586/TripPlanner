@@ -1,16 +1,17 @@
 // 專案備用庫編輯畫面：左地圖（所有頁簽的點，依頁簽類型配色）、右邊備用庫清單（與規劃畫面右下共用元件）
 // 搜尋新增、天數篩選、加入時指定天、匯入；頁簽可新增、改名、刪除
-import { lib } from '../maps-loader.js';
-import { state, on, emit } from '../state.js';
-import { startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow } from '../store.js';
-import { findLibItem, addLibItem, selectLibItem, mutateLib, mergeIntoLibrary, libItemMatches } from '../library.js';
-import { dayPicker, dayTint, confirmRemoveLibItem } from '../ui-common.js';
-import { createLibraryMap } from '../library-map.js';
-import { createLibraryPanel } from '../library-panel.js';
-import { openLibraryImport } from '../import.js';
-import { topBar } from './common.js';
-import { setPresenceScreen } from '../presence.js';
-import { h, toast } from '../utils.js';
+import { lib } from '../maps-loader.js?v=2026-11-08-2';
+import { state, on, emit } from '../state.js?v=2026-11-08-2';
+import { startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow, startLockWatch, stopLockWatch } from '../store.js?v=2026-11-08-2';
+import { isAdmin } from '../accounts.js?v=2026-11-08-2';
+import { findLibItem, addLibItem, selectLibItem, mutateLib, mergeIntoLibrary, libItemMatches } from '../library.js?v=2026-11-08-2';
+import { dayPicker, dayTint, confirmRemoveLibItem } from '../ui-common.js?v=2026-11-08-2';
+import { createLibraryMap } from '../library-map.js?v=2026-11-08-2';
+import { createLibraryPanel } from '../library-panel.js?v=2026-11-08-2';
+import { openLibraryImport } from '../import.js?v=2026-11-08-2';
+import { topBar, lockBarText } from './common.js?v=2026-11-08-2';
+import { setPresenceScreen } from '../presence.js?v=2026-11-08-2';
+import { h, toast } from '../utils.js?v=2026-11-08-2';
 
 export async function mountLibrary(app, project) {
   const offs = [];
@@ -19,11 +20,13 @@ export async function mountLibrary(app, project) {
 
   app.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'muted' }, '載入專案備用庫中…')));
   await startLibrarySession(project.id);
+  startLockWatch(project.id);   // 專案被鎖定時一般帳號只能檢視
   setPresenceScreen({ kind: 'library', text: `${project.name}／專案備用庫`, projectName: project.name });
 
   // ---------- 版面（與規劃的地圖畫面一致：左地圖、右側清單） ----------
   const statusEl = h('span', { class: 'save-status' }, '已儲存');
   const banner = h('div', { class: 'banner hidden' });
+  const lockBar = h('div', { class: 'lock-bar hidden' });
   const mapEl = h('div', { class: 'map' });
   const searchBox = h('div', { class: 'search-box' });
   const filterBar = h('div', { class: 'lib-dayfilter' });
@@ -31,10 +34,11 @@ export async function mountLibrary(app, project) {
   let addPicker = null;
   const getAddDays = () => addPicker?.get() || [];
   const listEl = h('div', { class: 'backup lib-backup' });
+  const editTools = h('div', { class: 'lib-edit-tools' }, searchBox, addDaysBox);   // 鎖定時隱藏
+  const importBtn = h('button', { class: 'small-btn', onClick: openImportDialog }, '匯入');
   const side = h('div', { class: 'side lib-side' },
     h('div', { class: 'lib-toolbar' },
-      searchBox,
-      addDaysBox,
+      editTools,
       h('div', { class: 'row small' }, h('span', { class: 'muted' }, '顯示：'), filterBar),
       h('div', { class: 'small muted' }, '這個專案的所有規劃共用這份備用庫；規劃畫面右下也可以直接編輯。')),
     listEl);
@@ -44,8 +48,9 @@ export async function mountLibrary(app, project) {
       h('span', { class: 'proj-name' }, project.name), h('span', { class: 'muted' }, '/'),
       h('strong', {}, '📦 專案備用庫'), statusEl,
     ], [
-      h('button', { class: 'small-btn', onClick: openImportDialog }, '匯入'),
+      importBtn,
     ]),
+    lockBar,
     banner,
     h('div', { class: 'main' }, mapEl, side));
   app.replaceChildren(root);
@@ -95,6 +100,7 @@ export async function mountLibrary(app, project) {
         await place.fetchFields({ fields: ['id', 'location'] });   // Essentials
         const pt = { name, placeId: place.id, lat: place.location.lat(), lng: place.location.lng() };
         const r = addLibItem(state.libTab, { ...pt, days: getAddDays() });
+        if (!r) return;
         if (r.added) toast(`已加入「${name}」`, 'ok');
         else toast('備用庫已有這個地點', 'warn');
         mapView.map.panTo(pt);   // 只移動到新加入的點，不改縮放
@@ -115,6 +121,7 @@ export async function mountLibrary(app, project) {
   }
 
   function openImportDialog() {
+    if (state.libRO) return;
     openLibraryImport(project, {
       getLibrary: () => state.library,
       apply: (entries, mode, tabSpecs) => {
@@ -138,6 +145,18 @@ export async function mountLibrary(app, project) {
   offs.push(on('library', () => { panel.render(); if (!hasUnsavedLibrary()) banner.classList.add('hidden'); }));
   offs.push(on('libSelect', onSelect));
 
+  // ---------- 鎖定提示（頂部）與編輯工具 ----------
+  function renderLock() {
+    const text = lockBarText({ projectLocked: state.projectLocked, planLocked: false });
+    lockBar.textContent = text || '';
+    lockBar.classList.toggle('hidden', !text);
+    lockBar.classList.toggle('admin', isAdmin());
+    editTools.classList.toggle('hidden', !!state.libRO);
+    importBtn.disabled = !!state.libRO;
+  }
+  renderLock();
+  offs.push(on('lock', () => { renderLock(); panel.render(); }));
+
   const onKey = (e) => {
     if (e.key !== 'Escape' || !state.libSelected) return;
     if (e.target.closest?.('input,textarea,select') || document.querySelector('.modal-overlay')) return;
@@ -157,6 +176,7 @@ export async function mountLibrary(app, project) {
     panel.destroy();
     mapView.destroy();
     await endLibrarySession();
+    stopLockWatch();
     state.library = null; state.libSelected = null;
   };
 }

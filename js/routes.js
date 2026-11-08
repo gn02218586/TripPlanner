@@ -1,9 +1,9 @@
 // 路線查詢：記憶體 → Firestore routeCache → Routes API（Maps JS Route.computeRoutes）
 // 計費：只用基本功能（不開路況、無中途點）→ Compute Routes Essentials
-import { lib } from './maps-loader.js';
-import { emit } from './state.js';
-import { coordKey, encodePath, decodePath, debounce } from './utils.js';
-import { loadRouteCache, getRouteCacheDoc, setRouteCacheDoc } from './store.js';
+import { lib } from './maps-loader.js?v=2026-11-08-2';
+import { emit } from './state.js?v=2026-11-08-2';
+import { coordKey, encodePath, decodePath, debounce } from './utils.js?v=2026-11-08-2';
+import { loadRouteCache, getRouteCacheDoc, setRouteCacheDoc } from './store.js?v=2026-11-08-2';
 
 const GOOGLE_MODE = { drive: 'DRIVING', transit: 'TRANSIT', walk: 'WALKING' };
 export const URL_MODE = { drive: 'driving', transit: 'transit', walk: 'walking', other: 'driving' };

@@ -1,10 +1,21 @@
 // 地圖小視窗、搜尋結果與備用庫清單共用的介面元件
-import { h, selectEl, fmtDate, confirmDialog, openModal, toast } from './utils.js';
-import { state, TYPES, TYPE_LABEL, DEFAULT_STAY, addStopSmart, findStop, scheduledDays, normDays } from './state.js';
-import { findLibItem, removeLibItem, addLibItem, libTabForType } from './library.js';
-import { dayColor } from './markers.js';
+import { h, selectEl, fmtDate, confirmDialog, openModal, toast } from './utils.js?v=2026-11-08-2';
+import { state, TYPES, TYPE_LABEL, DEFAULT_STAY, addStopSmart, findStop, scheduledDays, normDays } from './state.js?v=2026-11-08-2';
+import { findLibItem, removeLibItem, addLibItem, libTabForType } from './library.js?v=2026-11-08-2';
+import { dayColor } from './markers.js?v=2026-11-08-2';
 
 export const typeOptions = () => TYPES.map(t => ({ value: t, label: TYPE_LABEL[t] }));
+
+/**
+ * 鎖定（唯讀）：停用容器內的輸入框、選單與按鈕，容器加上 is-ro
+ * 放在 .ro-keep 裡（或本身有 ro-keep）的控制項不停用（例如選天、重試路線）
+ */
+export function lockControls(el, ro) {
+  if (!el) return el;
+  el.classList.toggle('is-ro', !!ro);
+  if (ro) el.querySelectorAll('input, select, textarea, button').forEach(x => { if (!x.closest('.ro-keep')) x.disabled = true; });
+  return el;
+}
 export const dayOptions = () => state.plan.days.map((d, i) => ({ value: i, label: `Day ${i + 1}  ${fmtDate(d.date)}` }));
 /** 備用庫頁簽選單 */
 export const tabOptions = () => (state.library?.tabs || []).map(t => ({ value: t.id, label: t.name }));
@@ -26,7 +37,8 @@ export function dayAddRow(onAdd) {
   const daySel = selectEl(dayOptions(), defaultDayIdx());
   const btn = h('button', { class: 'primary', onClick: () => onAdd(+daySel.value) }, addButtonLabel(defaultDayIdx()));
   daySel.addEventListener('change', () => { btn.textContent = addButtonLabel(+daySel.value); });
-  return h('div', { class: 'row' }, daySel, btn);
+  // 行程被鎖定時不能加入
+  return lockControls(h('div', { class: 'row' }, daySel, btn), state.planRO);
 }
 
 // ---------- 天數：顏色與右上天數篩選按鈕相同（markers.dayColor） ----------
@@ -102,19 +114,21 @@ export function buildAddPanel(pt, { onDone } = {}) {
     ...pt, name: nameIn.value.trim() || '自訂地點', type: typeSel.value,
     stayMin: DEFAULT_STAY[typeSel.value],
   });
-  return h('div', { class: 'popup add-panel' },
+  // 鎖定：行程與備用庫各自停用（兩邊都鎖定時整個停用）
+  return lockControls(h('div', { class: 'popup add-panel' },
     h('label', { class: 'row' }, '名稱', nameIn),
     h('label', { class: 'row' }, '類型', typeSel),
     dayAddRow((d) => { addStopSmart(d, data()); onDone?.(); }),
-    h('div', { class: 'row' }, tabSel,
+    lockControls(h('div', { class: 'row' }, tabSel,
       h('button', { onClick: () => {
         if (!state.library) { toast('備用庫載入中，請稍候', 'warn'); return; }
         const r = addLibItem(tabSel.value, { ...data(), days: picker.get() });
+        if (!r) return;
         toast(r.added ? '已加到備用庫' : '備用庫已有這個地點', r.added ? 'ok' : 'warn');
         onDone?.();
-      } }, '加到備用庫')),
-    h('div', { class: 'row small' }, h('span', { class: 'muted' }, '備用點適用：'), picker.el),
-  );
+      } }, '加到備用庫')), state.libRO),
+    lockControls(h('div', { class: 'row small' }, h('span', { class: 'muted' }, '備用點適用：'), picker.el), state.libRO),
+  ), state.planRO && state.libRO);
 }
 
 /** 刪除備用點（需確認；已排入行程時提示不影響行程） */

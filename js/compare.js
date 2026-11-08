@@ -1,8 +1,8 @@
 // 備用點比較：選取的行程點 → 備用點，開車／大眾運輸／步行（沿用路線快取，同一組只查一次）
-import { state, findStop, dayWinter } from './state.js';
-import { computeSchedule } from './schedule.js';
-import { requestRoutes, getRouteInfo } from './routes.js';
-import { fmtShortDur, transitDepartureDate, parseHM } from './utils.js';
+import { state, findStop, dayWinter } from './state.js?v=2026-11-08-2';
+import { computeSchedule } from './schedule.js?v=2026-11-08-2';
+import { requestRoutes, getRouteInfo } from './routes.js?v=2026-11-08-2';
+import { fmtShortDur, transitDepartureDate, parseHM } from './utils.js?v=2026-11-08-2';
 
 export const COMPARE_MODES = ['drive', 'transit', 'walk'];
 const ICON = { drive: '🚗', transit: '🚌', walk: '🚶' };
