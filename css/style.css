@@ -435,3 +435,29 @@ input.day-time { padding: 1px 4px; font-size: 12px; }
 .ip-project-box { border: 1px dashed var(--line); border-radius: 6px; padding: 6px 8px; }
 .ip-project { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
 .ip-grid { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; }
+
+/* ---------- 管理員：線上使用者、帳號管理 ---------- */
+a.btn-link { display: inline-flex; align-items: center; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--primary); font-size: 13px; text-decoration: none; white-space: nowrap; }
+a.btn-link:hover { border-color: var(--primary); }
+a.small-btn.btn-link { padding: 2px 8px; font-size: 12px; }
+.online-btn { color: #1e7e34; border-color: #b7e1c1; }
+.online-list h4 { margin: 12px 0 6px; }
+.online-group { margin-bottom: 10px; }
+.online-head { padding: 2px 0; border-bottom: 1px solid var(--line); }
+.online-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.online-table td { padding: 4px 6px; border-bottom: 1px dashed #eceef1; vertical-align: top; }
+.online-tag { background: #e6f4ea; color: #1e7e34; }
+.acct-box { margin-top: 10px; overflow-x: auto; }
+.acct-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+.acct-table th, .acct-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.acct-table th { background: #f6f7f9; font-weight: 600; white-space: nowrap; }
+.acct-table td input { min-width: 160px; }
+.acct-table .num-cell { text-align: center; }
+.reg-done .reg-email { font-size: 15px; padding: 3px 8px; background: #f3f4f6; border-radius: 4px; user-select: all; }
+.owner-note { padding: 4px 8px; background: #e8f0fe; border-radius: 6px; color: #1a56c4; }
+.acct-picker { display: flex; flex-direction: column; gap: 4px; }
+/* 管理員首頁分組：標題（收合）＋右側新建按鈕 */
+.group-head-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid #e3e3e3; }
+.group-head-row .group-head { border-bottom: none; flex: 1 1 auto; }
+.group-actions { display: flex; gap: 4px; }
+.empty-group { padding: 6px 4px; }

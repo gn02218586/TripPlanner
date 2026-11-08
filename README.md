@@ -38,12 +38,14 @@ TripPlanner/
    ├─ import.js          匯入行程、匯入成新專案、匯入專案備用庫
    ├─ text-format.js     匯入／匯出文字格式（匯出成可直接匯入的文字、欄位解析）
    ├─ accounts.js        帳號網域與管理員設定
+   ├─ presence.js        線上使用者（每個分頁回報上線狀態；管理員即時名單）
+   ├─ admin.js           管理員：帳號登記、登記表單、帳號選單、線上名單
    ├─ ui-common.js       共用小元件
    ├─ dnd.js             SortableJS 拖曳設定
    ├─ export.js          匯出純文字／匯入格式／JSON／Google 地圖
    ├─ utils.js           小工具
    └─ screens/
-      ├─ login.js  projects.js  plans.js  planner.js  library.js  project-form.js  common.js
+      ├─ login.js  projects.js  plans.js  planner.js  library.js  accounts.js  project-form.js  common.js
 ```
 
 ---
@@ -179,6 +181,8 @@ Advanced Markers（新式標記）需要 Map ID。
    1. 到「Firestore Database → 規則」，把 TripPlanner 資料夾裡 `firestore.rules` 的內容整段貼上，按「發布」。
    2. 詳細位置：Firebase 主控台 → 選這個專案 → 左側「建構（Build）」→「Firestore Database」→ 上方「規則（Rules）」頁簽 → 把原本內容全部取代 → 按「發布（Publish）」。
    3. 這份規則的效果是：管理員可讀寫全部；一般帳號只能讀寫「擁有帳號」等於自己的專案與其底下所有資料；未登入不能讀寫任何資料。
+      - 線上使用者（presence）：每個帳號只能建立、更新、刪除自己的文件；只有管理員能讀取與刪除全部。
+      - 帳號登記（accounts）：只有管理員能讀寫。
    4. 不需要安裝 firebase CLI，也不需要 `firebase.json`。
 9. （建議）限制 Firebase 的 API 金鑰：
    1. 到 Google Cloud「憑證」頁，找到 Firebase 自動建立的 Browser key。
@@ -200,6 +204,19 @@ Advanced Markers（新式標記）需要 Map ID。
     複製所有天、行程點、交通方式、手動時間、出發時間，以及這份規劃用到的路線快取（目標已有的略過）；歷史不複製。
     「同時把來源專案的備用庫合併到目標專案」預設勾選（同名頁簽合併、重複地點略過、超出目標天數的天拿掉）。日期一律跟著目標專案；
     來源天數比目標多時，多出來那幾天的行程點放進目標專案的備用庫，天數改成不限（例如 D6 → 不限），確認視窗會先說明。
+- **帳號管理**（右上角「帳號管理」，只有管理員）：
+  - 登記帳號組：在帳號管理畫面或管理員首頁按「＋ 新增帳號組」，輸入帳號名稱（只能用英文小寫、數字、連字號）和備註（例如「2028 日本團」）。
+  - 登記完成會顯示完整 Email（可複製）和「開啟 Firebase 使用者頁面」按鈕：到 Firebase 點「新增使用者」→ 貼上 Email → 設定密碼 → 把帳號名稱和密碼給旅伴。
+    （網站無法直接建立 Firebase 登入帳號，這一步要在 Firebase 主控台做。）
+  - 清單顯示帳號名稱、備註（可直接修改）、專案數量、最後上線、登記時間；「刪除登記」只會刪除網站上的登記，Firebase 的登入帳號請到 Firebase 停用或刪除。
+  - 開啟管理員首頁或帳號管理時，會自動把現有專案的擁有帳號（不含管理員）補登記進清單，備註留空。
+  - 管理員首頁的分組標題顯示「帳號名稱（備註）」；已登記但還沒有專案的帳號也會顯示分組。每組旁有「＋ 新建專案」「匯入成新專案」，建立的專案擁有帳號直接設為這一組。
+  - 轉移專案、複製專案到其他帳號時，目標帳號用下拉選單選擇已登記帳號（也可以選「其他…」手動輸入）。
+- **線上使用者**（右上角「線上 N」，只有管理員）：
+  - 每個瀏覽器分頁登入後，每 2 分鐘回報一次上線狀態（帳號、暱稱、目前畫面、瀏覽器）；分頁切到背景時暫停，回到前景或切換畫面時立刻回報；登出時刪除。
+  - 「線上」是最後活動在 3 分鐘內的分頁，依帳號分組；「最近 7 天」列出其他分頁的最後上線時間。名單即時更新，自己的分頁標示「（你）」。
+  - 管理員開啟名單時，會順便刪除超過 7 天的紀錄。
+  - 用量：每個開著的分頁每小時寫入約 30 次；管理員開著網站時，每次寫入會多讀 1 次（10 個分頁約每小時 300 次讀取，遠低於免費額度）。
 - **刪除專案**：在首頁分支圖的「專案設定」最下方。會先刪除所有規劃（含歷史）、路線快取與備用庫，最後才刪專案本身。
   刪除與複製要處理的子集合列在 `js/store.js` 的 `PROJECT_SUBCOLLECTIONS`，之後新增子集合時要加進去。
 - **從單一共用帳號改成多帳號的順序**：
@@ -220,6 +237,10 @@ projects/{projectId}/plans/{planId}
   （舊版每個規劃有自己的 backup{tabs[]}；開啟專案時會自動合併到備用庫並清除，backupMigrated＝已轉移）
 projects/{projectId}/plans/{planId}/history/{autoId}
   savedAt, editor, snapshot{days, backup}
+presence/{工作階段 id}                    線上使用者（每個瀏覽器分頁一份）
+  email, nickname, screen（home|plan|library|accounts）, screenText, projectName, planName, browser, lastActive（伺服器時間）, startedAt
+accounts/{帳號名稱}                        帳號登記（其他網域的帳號以完整 Email 當 id）
+  name, email, note, createdAt
 projects/{projectId}/library/main         備用庫（每個專案一份，該專案所有規劃共用）
   tabs[{id, name, type: spot|hotel|food, items[]}]（頁簽可自訂；預設 備用景點／備用住宿／備用餐廳）,
   version, updatedAt, lastEditor, lastSessionId

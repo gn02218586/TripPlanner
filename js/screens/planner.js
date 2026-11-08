@@ -12,6 +12,7 @@ import { createBackupView } from '../backup-view.js';
 import { openExport } from '../export.js';
 import { openProjectForm } from './project-form.js';
 import { topBar } from './common.js';
+import { setPresenceScreen } from '../presence.js';
 import { h, debounce, toast, openModal, confirmDialog, promptDialog, fmtDateTime, transitDepartureDate } from '../utils.js';
 
 const SPLIT_KEY = 'tripplanner.backupHeight';
@@ -35,6 +36,12 @@ export async function mountPlanner(app, project, planId) {
   }
   // 規劃與備用庫各自一個編輯工作階段（各自自動存檔、版本衝突檢查、即時同步）
   await Promise.all([initRouteCache(project.id), startPlanSession(project.id, planId), startLibrarySession(project.id)]);
+
+  // 線上狀態：目前畫面＝專案名稱／規劃名稱（改名時跟著更新）
+  const reportScreen = () => setPresenceScreen({
+    kind: 'plan', text: `${project.name}／${state.plan?.name || ''}`, projectName: project.name, planName: state.plan?.name || '',
+  });
+  reportScreen();
 
   // 舊資料轉換（一次性）：專案還沒有「每日包車時數」表時，依這份規劃舊的每日覆蓋值建立
   if (!Array.isArray(project.charterHoursByDay)) {
@@ -123,7 +130,7 @@ export async function mountPlanner(app, project, planId) {
     requestRoutes(jobs);
   }
   const debouncedRequest = debounce(requestAll, ROUTE_DEBOUNCE);
-  offs.push(on('plan', () => { planNameBtn.textContent = state.plan.name; debouncedRequest(); }));
+  offs.push(on('plan', () => { planNameBtn.textContent = state.plan.name; reportScreen(); debouncedRequest(); }));
   offs.push(on('routes', syncLegResults));
   offs.push(on('routesRetry', requestAll));
   requestAll();

@@ -4,6 +4,8 @@ rules_version = '2';
 // - 管理員可讀寫全部資料
 // - 一般帳號只能讀寫 ownerEmail 等於自己 Email 的專案，以及該專案底下的所有子集合
 // - 沒有 ownerEmail 的專案（未歸屬）只有管理員能存取
+// - presence（線上使用者）：每個帳號只能建立、更新、刪除自己的文件；只有管理員能讀取與刪除全部
+// - accounts（帳號登記）：只有管理員能讀寫
 // ※ 管理員 Email 也寫在 js/accounts.js 的 ADMIN_EMAIL，修改時兩處要一致
 // ※ 子集合用 get() 讀上層專案（寫入前的狀態）：程式一律先建立專案、刪除時最後才刪專案
 // 部署方式：Firebase 主控台 → 建構 → Firestore Database → 規則 → 全部取代成本檔內容 → 發布
@@ -42,6 +44,23 @@ service cloud.firestore {
       match /{sub=**} {
         allow read, write: if isAdmin() || ownsProject(pid);
       }
+    }
+
+    // 線上使用者：每個分頁一份文件（文件 id＝隨機工作階段 id）
+    match /presence/{sid} {
+      // 只有管理員能讀（名單、線上人數）
+      allow read: if isAdmin();
+      // 建立：email 必須是自己
+      allow create: if signedIn() && request.resource.data.email == myEmail();
+      // 更新：只能更新自己的文件，而且不能把 email 改成別人
+      allow update: if signedIn() && resource.data.email == myEmail() && request.resource.data.email == myEmail();
+      // 刪除：自己的文件，或管理員（清除 7 天以上的舊資料）
+      allow delete: if isAdmin() || (signedIn() && resource.data.email == myEmail());
+    }
+
+    // 帳號登記（帳號名稱、Email、備註）：只有管理員能讀寫
+    match /accounts/{name} {
+      allow read, write: if isAdmin();
     }
 
     // 其他路徑一律拒絕

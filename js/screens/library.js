@@ -9,6 +9,7 @@ import { createLibraryMap } from '../library-map.js';
 import { createLibraryPanel } from '../library-panel.js';
 import { openLibraryImport } from '../import.js';
 import { topBar } from './common.js';
+import { setPresenceScreen } from '../presence.js';
 import { h, toast } from '../utils.js';
 
 export async function mountLibrary(app, project) {
@@ -18,6 +19,7 @@ export async function mountLibrary(app, project) {
 
   app.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'muted' }, '載入專案備用庫中…')));
   await startLibrarySession(project.id);
+  setPresenceScreen({ kind: 'library', text: `${project.name}／專案備用庫`, projectName: project.name });
 
   // ---------- 版面（與規劃的地圖畫面一致：左地圖、右側清單） ----------
   const statusEl = h('span', { class: 'save-status' }, '已儲存');

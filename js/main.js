@@ -1,4 +1,4 @@
-// 進入點：檢查設定 → 登入 → 依網址（#/、#/p/專案、#/p/專案/規劃、#/lib/專案）切換畫面
+// 進入點：檢查設定 → 登入 → 依網址（#/、#/p/專案、#/p/專案/規劃、#/lib/專案、#/accounts）切換畫面
 import { GOOGLE_MAPS_API_KEY, MAP_ID, firebaseConfig } from '../config.js';
 import { h } from './utils.js';
 
@@ -27,6 +27,9 @@ async function start() {
   const { mountPlanner } = await import('./screens/planner.js');
   const { mountLibrary } = await import('./screens/library.js');
   const { refreshNickname } = await import('./screens/common.js');
+  const { mountAccounts } = await import('./screens/accounts.js');
+  const { startPresence, stopPresence, startPresenceWatch, stopPresenceWatch, setPresenceScreen } = await import('./presence.js');
+  const { isAdmin } = await import('./accounts.js');
 
   let cleanup = null;
   let token = 0;
@@ -61,9 +64,18 @@ async function start() {
         const c = await mountLibrary(app, project);
         if (my !== token) { await c(); return; }
         cleanup = c;
+      } else if (parts[0] === 'accounts') {
+        // #/accounts：帳號管理（只有管理員）
+        state.project = null;
+        if (!isAdmin()) { showNoAccess(); return; }
+        setPresenceScreen({ kind: 'accounts', text: '帳號管理' });
+        const c = await mountAccounts(app);
+        if (my !== token) { await c(); return; }
+        cleanup = c;
       } else {
         // #/ 或 #/p/專案：專案列表（後者自動展開該專案的分支）
         state.project = null;
+        setPresenceScreen({ kind: 'home', text: '首頁' });
         const c = await mountProjects(app, parts[0] === 'p' ? parts[1] || null : null);
         if (my !== token) { await c(); return; }
         cleanup = c;
@@ -83,7 +95,14 @@ async function start() {
   window.addEventListener('hashchange', route);
   onAuthStateChanged(auth, async (user) => {
     state.user = user;
-    if (user) refreshNickname();   // 暱稱：這台瀏覽器存的 → 帳號名稱
+    if (user) {
+      refreshNickname();   // 暱稱：這台瀏覽器存的 → 帳號名稱
+      startPresence();     // 線上狀態回報（每個分頁一份）
+      if (isAdmin()) startPresenceWatch(); else stopPresenceWatch();
+    } else {
+      stopPresence();
+      stopPresenceWatch();
+    }
     route();
   });
 }

@@ -3,6 +3,8 @@ import { state, emit } from '../state.js';
 import { auth, signOut } from '../firebase.js';
 import { h, promptDialog } from '../utils.js';
 import { accountName, currentEmail, isAdmin } from '../accounts.js';
+import { stopPresence } from '../presence.js';
+import { onlineButton } from '../admin.js';
 
 const NICK_KEY = 'tripplanner.nickname';
 
@@ -36,5 +38,14 @@ export function topBar(left = [], right = []) {
     h('div', { class: 'tb-right' }, ...right, nickBtn,
       acct && acct !== state.nickname ? h('span', { class: 'small muted', title: currentEmail() }, acct) : null,
       isAdmin() ? h('span', { class: 'tag admin-tag' }, '管理員') : null,
-      h('button', { class: 'link-btn', onClick: () => signOut(auth) }, '登出')));
+      // 管理員：線上使用者、帳號管理
+      isAdmin() ? onlineButton() : null,
+      isAdmin() ? h('a', { class: 'small-btn btn-link', href: '#/accounts', title: '帳號登記、備註、最後上線' }, '帳號管理') : null,
+      h('button', { class: 'link-btn', onClick: logout }, '登出')));
+}
+
+/** 登出：先刪除自己的線上狀態（規則需要登入中才能刪），再登出 */
+async function logout() {
+  try { await stopPresence(); } catch { /* 刪除失敗也照樣登出 */ }
+  signOut(auth);
 }

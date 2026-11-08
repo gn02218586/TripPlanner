@@ -3,22 +3,21 @@ import { lib } from '../maps-loader.js';
 import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL, deriveCharterTable } from '../state.js';
 import { createProject, updateProject, deleteProject, copyProjectTo } from '../store.js';
 import { h, selectEl, toast, num, fmtDate, addDays, confirmDialog, promptDialog, openModal } from '../utils.js';
-import { isAdmin, toEmail, accountLabel, ACCOUNT_DOMAIN } from '../accounts.js';
-
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+import { isAdmin } from '../accounts.js';
+import { accountPicker, accountTitle } from '../admin.js';
 
 /**
  * onDeleted：有傳入時顯示「刪除專案」（只在首頁提供；地圖畫面開著規劃時不能刪）
  * onCopied(newId, ownerEmail)：管理員「複製到其他帳號」完成後呼叫（首頁用來重新載入列表）
+ * ownerEmail：管理員從首頁某個帳號組「＋ 新建專案」時，新專案的擁有帳號直接設為這一組
  */
-export async function openProjectForm({ project = null, plan = null, onSaved, onDeleted = null, onCopied = null }) {
+export async function openProjectForm({ project = null, plan = null, onSaved, onDeleted = null, onCopied = null, ownerEmail = null }) {
   const isNew = !project;
   const admin = isAdmin();
   const canEditBounds = isNew || admin || project.creatorNickname === state.nickname;
-  // 擁有帳號（只有管理員看得到、可轉移）
+  // 擁有帳號（只有管理員看得到、可轉移）：已登記帳號的下拉選單＋「其他…」＋「未歸屬」
   const oldOwner = String(project?.ownerEmail || '').toLowerCase();
-  const ownerIn = h('input', { type: 'text', class: 'full', value: oldOwner ? accountLabel(oldOwner) : '',
-    placeholder: `帳號名稱，例如 hokkaido（自動補 @${ACCOUNT_DOMAIN}）；留空＝未歸屬`, autocapitalize: 'off', spellcheck: 'false' });
+  const ownerPick = !isNew && admin ? accountPicker({ value: oldOwner, allowNone: true }) : null;
   let bounds = project?.bounds ? { ...project.bounds } : null;
   let defaultStart = project?.defaultStart ? { ...project.defaultStart } : null;
   let defaultEnd = project?.defaultEnd ? { ...project.defaultEnd } : null;
@@ -79,6 +78,7 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
   const endBox = h('div', { class: 'pt-box' });
 
   const form = h('div', { class: 'pf-form scroll' },
+    isNew && ownerEmail ? h('div', { class: 'small owner-note' }, `擁有帳號：${accountTitle(ownerEmail)}（${ownerEmail}）`) : null,
     h('label', { class: 'row col' }, '專案名稱', nameIn),
     h('fieldset', {},
       h('legend', {}, '地圖範圍'),
@@ -106,8 +106,8 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
     !isNew ? h('div', { class: 'small muted' }, '預設起訖點只影響之後新建的空白規劃。') : null,
     !isNew && admin ? h('fieldset', { class: 'admin-only' },
       h('legend', {}, '擁有帳號（管理員）'),
-      h('div', { class: 'small muted' }, `目前：${oldOwner || '未歸屬'}。轉移後只有新的擁有帳號與管理員看得到這個專案。請確認帳號已在 Firebase Authentication 建立。`),
-      ownerIn,
+      h('div', { class: 'small muted' }, `目前：${oldOwner ? accountTitle(oldOwner) : '未歸屬'}。轉移後只有新的擁有帳號與管理員看得到這個專案。請確認帳號已在 Firebase Authentication 建立。`),
+      ownerPick.el,
       h('div', { class: 'row' },
         h('button', { onClick: openCopyDialog, title: '把整個專案（設定、規劃、專案備用庫、路線快取）複製一份給指定帳號' }, '複製到其他帳號'),
         h('span', { class: 'small muted' }, '原專案保留不變；歷史快照不複製'))) : null,
@@ -215,8 +215,8 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
     if (canEditBounds) data.bounds = bounds;
     // 管理員轉移擁有帳號：轉移前確認
     if (!isNew && admin) {
-      const newOwner = toEmail(ownerIn.value);
-      if (newOwner && !EMAIL_RE.test(newOwner)) return toast('擁有帳號格式不正確', 'warn');
+      const newOwner = ownerPick.get();
+      if (newOwner == null) return toast('擁有帳號格式不正確（選「其他…」時請輸入帳號名稱）', 'warn');
       if (newOwner !== oldOwner) {
         const msg = `把專案「${project.name}」的擁有帳號\n從「${oldOwner || '未歸屬'}」轉移給「${newOwner || '未歸屬'}」？\n` +
           (newOwner ? `轉移後只有 ${newOwner} 與管理員看得到這個專案。` : '改為未歸屬後只有管理員看得到這個專案。');
@@ -226,7 +226,7 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
     }
     try {
       if (isNew) {
-        const id = await createProject({ ...data, creatorNickname: state.nickname });
+        const id = await createProject({ ...data, creatorNickname: state.nickname }, { ownerEmail });
         toast('專案已建立', 'ok'); close(); onSaved?.(id);
       } else {
         await updateProject(project.id, data);
@@ -237,24 +237,21 @@ export async function openProjectForm({ project = null, plan = null, onSaved, on
 
   /** 管理員：複製專案到其他帳號（以雲端上的原專案為準；這個視窗尚未儲存的修改不會帶過去） */
   async function openCopyDialog() {
-    const targetIn = h('input', { type: 'text', class: 'full', placeholder: `帳號名稱，例如 japan2028（自動補 @${ACCOUNT_DOMAIN}）`,
-      autocapitalize: 'off', spellcheck: 'false' });
+    const targetPick = accountPicker({ value: '' });
     const nameIn = h('input', { type: 'text', class: 'full', value: project.name });
     const m = openModal({
       title: '複製專案到其他帳號',
       body: h('div', {},
-        h('label', { class: 'row col' }, '目標帳號', targetIn),
+        h('label', { class: 'row col' }, '目標帳號', targetPick.el),
         h('label', { class: 'row col' }, '新專案名稱', nameIn),
-        h('div', { class: 'small muted' }, '複製內容：專案設定、所有規劃（含行程點、交通設定、各規劃的備用庫）、專案備用庫、路線快取。歷史快照不複製。目標帳號可以和原帳號相同。')),
+        h('div', { class: 'small muted' }, '複製內容：專案設定、所有規劃（含行程點、交通設定）、備用庫、路線快取。歷史快照不複製。目標帳號可以和原帳號相同。')),
       actions: [{ label: '取消', value: null }, { label: '下一步', value: 'ok', class: 'primary' }],
     });
-    setTimeout(() => targetIn.focus(), 30);
     if ((await m.result) !== 'ok') return;
-    const target = toEmail(targetIn.value);
+    const target = targetPick.get();
     const name = nameIn.value.trim() || project.name;
-    if (!target) { toast('請輸入目標帳號', 'warn'); return; }
-    if (!EMAIL_RE.test(target)) { toast('目標帳號格式不正確', 'warn'); return; }
-    const who = accountLabel(target);
+    if (!target) { toast('請選擇目標帳號（選「其他…」時請輸入正確的帳號名稱）', 'warn'); return; }
+    const who = accountTitle(target);
     if (!(await confirmDialog(`把專案「${project.name}」複製一份到 ${who}？原專案保留不變。\n請確認帳號名稱正確，打錯的話只有管理員看得到這份複本`, '複製'))) return;
 
     // 複製中：顯示進度（不能中途關閉）

@@ -35,9 +35,13 @@ export async function getProject(id) {
   const s = await getDoc(doc(db, 'projects', id));
   return s.exists() ? { id: s.id, ...s.data() } : null;
 }
-/** 建立專案：擁有帳號一律是目前登入的帳號（等伺服器確認後才回傳，之後才能寫子集合） */
-export async function createProject(data) {
-  const ref = await addDoc(projectsCol(), { ...clone(data), ownerEmail: currentEmail(), createdAt: Date.now() });
+/**
+ * 建立專案（等伺服器確認後才回傳，之後才能寫子集合）
+ * 擁有帳號＝目前登入的帳號；管理員可以指定 ownerEmail（從首頁某個帳號組新建）
+ */
+export async function createProject(data, { ownerEmail = null } = {}) {
+  const owner = ownerEmail && isAdmin() ? String(ownerEmail).toLowerCase() : currentEmail();
+  const ref = await addDoc(projectsCol(), { ...clone(data), ownerEmail: owner, createdAt: Date.now() });
   return ref.id;
 }
 export async function updateProject(id, data) {

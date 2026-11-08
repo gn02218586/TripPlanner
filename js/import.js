@@ -727,7 +727,8 @@ export function openImport(project, { onDone } = {}) {
 // =====================================================================
 // 首頁「匯入成新專案」
 // =====================================================================
-export function openImportProject() {
+/** ownerEmail：管理員從首頁某個帳號組匯入時，新專案的擁有帳號直接設為這一組 */
+export function openImportProject({ ownerEmail = null } = {}) {
   importFlow({
     title: '匯入成新專案',
     example: '# 請貼上「匯出 → 匯出成匯入格式」的文字；需要 [專案] 段落\n[專案]\n專案名稱：北海道冬季\n地圖範圍：北海道\n開始日期：2027-02-15\n天數：3\n\n' + EXAMPLE.replace(/^# .*\n/, ''),
@@ -760,7 +761,7 @@ export function openImportProject() {
         errs.length ? h('div', { class: 'import-errors' }, errs.map(e => h('div', {}, '⚠ ' + e))) : null,
         projectSummary(pj), countsLine(parsed, numDays),
         progress, table, summary,
-        h('div', { class: 'small muted' }, '新專案的擁有帳號是目前登入的帳號。'),
+        h('div', { class: 'small muted' }, ownerEmail ? `新專案的擁有帳號：${ownerEmail}` : '新專案的擁有帳號是目前登入的帳號。'),
         h('div', { class: 'row end' }, h('button', { onClick: back }, '返回修改'), createBtn),
       ].filter(Boolean));
       refresh();
@@ -789,7 +790,7 @@ export function openImportProject() {
           const data = { name, ...buildProjectData(pj), creatorNickname: state.nickname };
           // 先建立專案（擁有帳號＝目前帳號），完成後才寫入規劃與備用庫
           btn.textContent = '建立專案…';
-          pid = await createProject(data);
+          pid = await createProject(data, { ownerEmail });
           const project = { id: pid, ...data };
           btn.textContent = '建立規劃…';
           const plan = buildPlan(parsed, project);

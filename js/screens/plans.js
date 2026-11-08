@@ -3,6 +3,7 @@
 import { state, blankPlanData, normalizePlan, fitPlanToProject } from '../state.js';
 import { listPlans, getPlan, createPlan, deletePlan, getLibrary, listProjects, copyPlanToProject, migratePlanBackups } from '../store.js';
 import { isAdmin, accountLabel } from '../accounts.js';
+import { listAccounts, accountTitle } from '../admin.js';
 import { libraryCounts } from '../library.js';
 import { h, selectEl, fmtDateTime, toast, openModal, confirmDialog, promptDialog, clone, uid } from '../utils.js';
 import { openProjectForm } from './project-form.js';
@@ -43,7 +44,8 @@ async function newPlanDialog(project, plans) {
  */
 async function copyToProjectDialog(srcProject, plan, onSameProject) {
   let projects;
-  try { projects = await listProjects(); } catch (e) { toast('讀取專案失敗：' + e.message, 'error'); return; }
+  let accounts = [];
+  try { [projects, accounts] = await Promise.all([listProjects(), listAccounts()]); } catch (e) { toast('讀取專案失敗：' + e.message, 'error'); return; }
   // 下拉選單依擁有帳號分組（未歸屬排最後）
   const groups = new Map();
   for (const p of projects) {
@@ -54,7 +56,8 @@ async function copyToProjectDialog(srcProject, plan, onSameProject) {
   const keys = [...groups.keys()].sort((a, b) => (!a) - (!b) || accountLabel(a).localeCompare(accountLabel(b)));
   const sel = h('select', { class: 'full' },
     h('option', { value: '' }, '選擇目標專案…'),
-    ...keys.map(k => h('optgroup', { label: k ? accountLabel(k) : '未歸屬' },
+    // 分組標題：帳號名稱（備註）
+    ...keys.map(k => h('optgroup', { label: k ? accountTitle(k, accounts) : '未歸屬' },
       ...groups.get(k).map(p => h('option', { value: p.id }, `${p.name}（${p.numDays} 天${p.id === srcProject.id ? '・目前專案' : ''}）`)))));
   const nameIn = h('input', { type: 'text', class: 'full', value: `${plan.name}（來自 ${srcProject.name}）` });
   const libCb = h('input', { type: 'checkbox', checked: true });
