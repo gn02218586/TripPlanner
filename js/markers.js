@@ -8,9 +8,7 @@ export function dayColor(i, n) {
   if (n <= PALETTE.length) return PALETTE[i % PALETTE.length];
   return `hsl(${Math.round((i * 360) / n)}, 70%, 42%)`;
 }
-export const BACKUP_COLOR = '#8a8a8a';
-export const REF_COLOR = '#7b3fe4';
-/** 專案備用庫三個頁簽的標記顏色 */
+/** 備用庫標記顏色：依頁簽類型（景點／住宿／餐廳） */
 export const LIB_COLORS = { spot: '#2e9d4f', hotel: '#2f6fd6', food: '#e8710a' };
 
 export const TYPE_GLYPH = { spot: '', food: '🍴', hotel: '', airport: '✈' };

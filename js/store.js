@@ -1,12 +1,12 @@
 // Firestore 讀寫：專案、規劃、路線快取、歷史快照、即時同步與存檔衝突處理
 import {
   db, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
-  query, where, orderBy, limit, onSnapshot, runTransaction, writeBatch,
+  query, where, orderBy, limit, onSnapshot, runTransaction, writeBatch, deleteField,
 } from './firebase.js';
-import { state, emit, on, normalizePlan } from './state.js';
+import { state, emit, on, normalizePlan, fitPlanToProject, normDays, HOTEL_TAB_KIND } from './state.js';
 import { debounce, clone, uid, toast, choose, fmtDateTime } from './utils.js';
 import { isAdmin, currentEmail } from './accounts.js';
-import { normalizeLibrary } from './library.js';
+import { normalizeLibrary, mergeIntoLibrary, inferTabType, libTabForType } from './library.js';
 
 const SESSION_ID = uid();          // 用來分辨「自己存的」與「別人存的」
 const SAVE_DEBOUNCE = 2000;
@@ -141,6 +141,99 @@ export async function copyProjectTo(srcId, { ownerEmail, name }, onProgress = ()
   }
 }
 
+/**
+ * 管理員：把規劃複製到另一個專案（可以是任何帳號的專案，原規劃不變）
+ * - 天數依目標專案調整（fitPlanToProject）；日期跟著目標專案；不複製歷史快照
+ * - 路線快取：只複製這份規劃路段用到的，目標已有的略過
+ * - 超出目標天數的行程點一律放進目標專案的備用庫（依類型選頁簽、天數＝不限）
+ * - includeLibrary：同時把來源專案的備用庫合併到目標（同名頁簽合併、重複地點略過、超出目標天數的天拿掉）
+ * 目標專案已存在，所以直接寫入規劃，再寫路線快取與備用庫
+ * 回傳 { planId, routes, lib: { added, dup } | null }
+ */
+export async function copyPlanToProject(srcPid, planId, targetPid, { name, includeLibrary = true }, onProgress = () => {}) {
+  if (!isAdmin()) throw new Error('只有管理員可以複製規劃到其他專案');
+  onProgress('讀取規劃…');
+  const [src, target] = await Promise.all([getPlan(srcPid, planId), getProject(targetPid)]);
+  if (!src) throw new Error('找不到來源規劃');
+  if (!target) throw new Error('找不到目標專案');
+  const { data, movedStops } = fitPlanToProject(src, target);
+
+  onProgress('建立規劃…');
+  const newPlanId = await createPlan(targetPid, { name, ...data });
+
+  // 路線快取：來源規劃各路段用到的 key
+  const keys = new Set();
+  (src.days || []).forEach(d => (d.stops || []).forEach(s => { if (s.leg?.gKey) keys.add(s.leg.gKey); }));
+  let routes = 0;
+  if (keys.size) {
+    onProgress('複製路線快取…');
+    const existing = new Set((await getDocs(routeCol(targetPid))).docs.map(d => d.id));
+    const need = [...keys].filter(k => !existing.has(k));
+    const found = [];
+    for (let i = 0; i < need.length; i += 20) {
+      const part = need.slice(i, i + 20);
+      const snaps = await Promise.all(part.map(k => getDoc(doc(db, 'projects', srcPid, 'routeCache', k))));
+      snaps.forEach((sn, j) => { if (sn.exists()) found.push([part[j], sn.data()]); });
+    }
+    for (let i = 0; i < found.length; i += BATCH_MAX) {
+      const batch = writeBatch(db);
+      found.slice(i, i + BATCH_MAX).forEach(([k, v]) => batch.set(doc(db, 'projects', targetPid, 'routeCache', k), v));
+      await batch.commit();
+    }
+    routes = found.length;
+  }
+
+  let lib = null;
+  const srcLib = includeLibrary ? await getLibrary(srcPid) : null;
+  if (srcLib || movedStops.length) {
+    onProgress('合併備用庫…');
+    const fit = (days) => normDays(days).filter(d => d <= target.numDays);
+    lib = await updateLibraryTx(targetPid, (l) => {
+      const entries = [
+        ...(srcLib ? srcLib.tabs.flatMap(t => t.items.map(it => ({ tabName: t.name, tabType: t.type, pt: { ...it, days: fit(it.days) } }))) : []),
+        // 超出目標天數的行程點：依類型放進目標的頁簽，天數＝不限
+        ...movedStops.map(st => { const tab = libTabForType(st.type, l); return { tabName: tab.name, tabType: tab.type, pt: { ...st, days: [] } }; }),
+      ];
+      return mergeIntoLibrary(l, entries, { tabSpecs: srcLib ? srcLib.tabs.map(t => ({ name: t.name, type: t.type })) : [] });
+    });
+  }
+  return { planId: newPlanId, routes, lib };
+}
+
+// ---------- 舊資料轉移：本規劃備用庫 → 專案備用庫 ----------
+/**
+ * 把專案內各規劃還保留的舊「本規劃備用庫」合併到專案備用庫（只做一次）
+ * - 同名頁簽合併，沒有的頁簽新增（類型：住宿類頁簽＝住宿、名稱含「餐廳」＝餐廳、其他＝景點）
+ * - 重複地點略過；保留天數、備註、加入者
+ * - 專案備用庫寫入成功後，才清除各規劃的 backup 欄位並記錄 backupMigrated（不改版本號，不影響正在編輯的人）
+ * - 專案備用庫寫入失敗時丟出錯誤，舊資料不清除；清到一半失敗時下次會再合併（重複略過，不會重複）
+ * 回傳 { plans: 有備用點的規劃數, added }；沒有要轉移的回傳 null
+ */
+export async function migratePlanBackups(pid) {
+  const snap = await getDocs(plansCol(pid));
+  const todo = snap.docs.filter(d => { const v = d.data(); return v.backup && !v.backupMigrated; });
+  if (!todo.length) return null;
+  const tabSpecs = [], entries = [];
+  let plans = 0;
+  for (const d of todo) {
+    let n = 0;
+    for (const t of d.data().backup?.tabs || []) {
+      const tabType = t.kind === HOTEL_TAB_KIND ? 'hotel' : inferTabType(t.name || '');
+      const name = String(t.name || '備用').trim() || '備用';
+      tabSpecs.push({ name, type: tabType });
+      for (const it of t.items || []) { entries.push({ tabName: name, tabType, pt: { ...it } }); n++; }
+    }
+    if (n) plans++;
+  }
+  let added = 0;
+  if (entries.length || tabSpecs.length) {
+    const r = await updateLibraryTx(pid, (l) => mergeIntoLibrary(l, entries, { tabSpecs }));
+    added = r.added;
+  }
+  for (const d of todo) await updateDoc(d.ref, { backup: deleteField(), backupMigrated: true });
+  return { plans, added };
+}
+
 // ---------- 規劃 ----------
 export async function listPlans(pid) {
   const snap = await getDocs(plansCol(pid));
@@ -153,11 +246,11 @@ export async function getPlan(pid, planId) {
   const s = await getDoc(planRef(pid, planId));
   return s.exists() ? { id: s.id, ...s.data() } : null;
 }
-export async function createPlan(pid, { name, days, backup }) {
+export async function createPlan(pid, { name, days }) {
   const now = Date.now();
   const ref = await addDoc(plansCol(pid), clone({
     name, creator: state.nickname, lastEditor: state.nickname, updatedAt: now, version: 1,
-    lastSessionId: SESSION_ID, days, backup,
+    lastSessionId: SESSION_ID, days, backupMigrated: true,
   }));
   return ref.id;
 }
@@ -193,7 +286,7 @@ async function addHistory() {
   session.lastSnapshotAt = Date.now();
   await addDoc(historyCol(pid, planId), {
     savedAt: Date.now(), editor: state.nickname,
-    snapshot: clone({ days: state.plan.days, backup: state.plan.backup }),
+    snapshot: clone({ days: state.plan.days }),
   });
   const snap = await getDocs(query(historyCol(pid, planId), orderBy('savedAt', 'desc')));
   const extra = snap.docs.slice(HISTORY_KEEP);
@@ -247,7 +340,8 @@ export async function saveNow(force = false) {
   if (!force && s.editCounter === s.savedCounter) return;
   s.saving = true; setStatus('saving');
   const startCounter = s.editCounter;
-  const payload = clone({ name: state.plan.name, days: state.plan.days, backup: state.plan.backup });
+  // 只存名稱與行程；備用庫是專案層級的另一份文件（舊資料的 backup 欄位由轉移程式清除）
+  const payload = clone({ name: state.plan.name, days: state.plan.days });
   let conflict = null, result = null;
   try {
     result = await runTransaction(db, async (tx) => {
@@ -328,7 +422,8 @@ function handleRemote(snap) {
 
 /** 還原歷史快照（當作一次一般修改，會正常存檔） */
 export function restoreSnapshot(snapshot, mutate) {
-  mutate(p => { p.days = clone(snapshot.days); p.backup = clone(snapshot.backup); });
+  // 舊快照裡的本規劃備用庫不再使用，只還原行程
+  mutate(p => { p.days = clone(snapshot.days); });
 }
 
 export const currentSession = () => session;
@@ -341,12 +436,6 @@ const libPayload = (lib) => clone({ tabs: lib.tabs });
 export async function getLibrary(pid) {
   const s = await getDoc(libraryRef(pid));
   return normalizeLibrary(s.exists() ? s.data() : null);
-}
-
-/** 即時訂閱（規劃畫面唯讀使用）；回傳取消訂閱函式 */
-export function subscribeLibrary(pid, cb) {
-  return onSnapshot(libraryRef(pid), (snap) => cb(normalizeLibrary(snap.exists() ? snap.data() : null)),
-    (e) => console.warn('專案備用庫訂閱失敗', e));
 }
 
 /**

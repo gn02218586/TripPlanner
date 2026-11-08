@@ -2,8 +2,9 @@
 import { lib } from './maps-loader.js';
 import {
   state, on, emit, mutate, MODES, MODE_LABEL, updateStop, updateLeg, dayCharterHours, selectStop,
-  prevPoint, findStop, stopToBackup, removeStop, backupTabFor, backupHasPlace,
+  prevPoint, findStop, removeStop,
 } from './state.js';
+import { stopToLibrary } from './library.js';
 import { stopLabelMap, typeIcon, dayColor } from './markers.js';
 import { retryRoute, gmapsDirUrl } from './routes.js';
 import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, fmtShortDur, num, parseHM, toast, confirmDialog } from './utils.js';
@@ -172,13 +173,14 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
           s.note ? h('div', { class: 'stop-note small muted' }, s.note) : null)));
   }
 
-  /** ↩ 移回備用庫：依類型放到對應頁簽；已有同一地點就不重複加入 */
+  /**
+   * ↩ 移回備用庫（會從行程移除；若正被選取會自動清除選取，路段隨後重算）
+   * 備用庫已有同一地點：不重複新增；沒有：依類型放到對應頁簽，天數為原本那一天
+   */
   function moveToBackup(s) {
-    const tabId = backupTabFor(s.type);
-    const tabName = state.plan.backup.tabs.find(t => t.id === tabId)?.name || '';
-    const dup = backupHasPlace(s);
-    stopToBackup(s.id, tabId);   // 會從行程移除；若正被選取會自動清除選取，路段隨後重算
-    toast(dup ? `已從行程移除（備用庫已有「${s.name}」）` : `已移回備用庫「${tabName}」`, 'ok');
+    const r = stopToLibrary(s.id);
+    if (!r) { toast('已從行程移除（備用庫載入中，沒有加入）', 'warn'); return; }
+    toast(r.existed ? `已從行程移除（備用庫已有「${s.name}」）` : `已移回備用庫「${r.tabName}」`, 'ok');
   }
 
   /** × 從行程刪除（需確認） */

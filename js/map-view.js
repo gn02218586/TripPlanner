@@ -1,16 +1,17 @@
-// 地圖：行程標記、備用庫灰色標記、參考規劃標記、路線、點擊新增與小視窗
+// 地圖：行程標記、備用庫標記（依頁簽類型配色）、路線、點擊新增與小視窗
 import { lib } from './maps-loader.js';
 import { MAP_ID } from '../config.js';
 import {
-  state, on, mutate, findStop, findBackup, prevPoint, selectStop, DEFAULT_STAY, HOTEL_TAB_KIND,
-  updateStop, moveStop, removeStop, stopToBackup, updateBackupItem, moveBackupItem,
-  backupToTrip, addBackupItem, scheduledDays,
+  state, on, mutate, findStop, prevPoint, selectStop, DEFAULT_STAY,
+  updateStop, moveStop, removeStop, backupDayFilter, itemForDay,
 } from './state.js';
-import { buildTripMarkers, markerEl, legTagEl, compareNodes, dayColor, BACKUP_COLOR, REF_COLOR, LIB_COLORS, TYPE_GLYPH } from './markers.js';
-import { findLibItem, libToTrip } from './library.js';
+import { buildTripMarkers, markerEl, legTagEl, compareNodes, dayColor, LIB_COLORS, TYPE_GLYPH } from './markers.js';
+import { findLibItem, libToTrip, stopToLibrary, updateLibItem, moveLibItem, libTabForType } from './library.js';
 import { compareInfo } from './compare.js';
-import { h, selectEl, confirmDialog, toast, samePlace, fmtShortDur } from './utils.js';
-import { buildAddPanel, typeOptions, dayOptions, tabOptions, dayAddRow, confirmRemoveBackup } from './ui-common.js';
+import { h, selectEl, confirmDialog, toast, fmtShortDur } from './utils.js';
+import {
+  buildAddPanel, typeOptions, dayOptions, tabOptions, dayAddRow, confirmRemoveLibItem, daysButton, dayPicker, scheduledTags,
+} from './ui-common.js';
 
 export async function createMapView(container, { getSchedule }) {
   const { Map, InfoWindow, Polyline } = await lib('maps');
@@ -29,9 +30,9 @@ export async function createMapView(container, { getSchedule }) {
   map.fitBounds(bounds, 0);
 
   const info = new InfoWindow();
-  let tripMarkers = [], backupMarkers = [], refMarkers = [], lines = [], legTags = [], tempMarker = null;
+  let tripMarkers = [], backupMarkers = [], lines = [], legTags = [], tempMarker = null;
   let hoverMarker = null, hoverLine = null, hoverBox = null;
-  let popupFor = null; // 目前小視窗對應的資料 { kind:'stop'|'backup', id }，資料被刪除時自動關閉
+  let popupFor = null; // 目前小視窗對應的資料 { kind:'stop'|'lib', id }，資料被刪除時自動關閉
   const offs = [];
 
   const latLngOf = (pos) => ({
@@ -51,8 +52,7 @@ export async function createMapView(container, { getSchedule }) {
   /** 小視窗對應的行程點／備用點已不存在（移回備用庫、刪除、被別人改掉）就關閉 */
   function closeStalePopup() {
     if (!popupFor) return;
-    const exists = popupFor.kind === 'stop' ? findStop(popupFor.id)
-      : popupFor.kind === 'lib' ? findLibItem(popupFor.id) : findBackup(popupFor.id);
+    const exists = popupFor.kind === 'stop' ? findStop(popupFor.id) : findLibItem(popupFor.id);
     if (!exists) { info.close(); popupFor = null; }
   }
 
@@ -196,29 +196,17 @@ export async function createMapView(container, { getSchedule }) {
     backupMarkers.forEach(m => (m.map = null));
     backupMarkers = [];
     // 勾選「地圖顯示備用點」才顯示，且只顯示目前頁簽
-    if (!state.showBackupOnMap) return;
-    if (state.backupSource === 'lib') {
-      // 專案共用：用頁簽顏色
-      const tab = state.library?.tabs.find(t => t.id === state.libTab);
-      for (const it of tab?.items || []) {
-        const m = new AdvancedMarkerElement({
-          map, position: { lat: it.lat, lng: it.lng },
-          content: markerEl({ type: it.type, label: TYPE_GLYPH[it.type] || '', color: LIB_COLORS[tab.id], small: true }),
-          gmpClickable: true, title: `專案共用：${it.name}`, zIndex: 0,
-        });
-        m.addEventListener('gmp-click', () => openLibPopup(it.id));
-        backupMarkers.push(m);
-      }
-      return;
-    }
-    const tabs = state.plan.backup.tabs.filter(t => t.id === state.activeTab);
-    for (const tab of tabs) for (const it of tab.items) {
+    if (!state.showBackupOnMap || !state.library) return;
+    // 右上選了某一天且右下為「本日」：只顯示這一天與不限的點
+    const dayF = backupDayFilter();
+    const tab = state.library.tabs.find(t => t.id === state.libTab) || state.library.tabs[0];
+    for (const it of tab.items.filter(x => dayF == null || itemForDay(x, dayF))) {
       const m = new AdvancedMarkerElement({
         map, position: { lat: it.lat, lng: it.lng },
-        content: markerEl({ type: it.type, label: TYPE_GLYPH[it.type] || '', color: BACKUP_COLOR, small: true }),
-        gmpClickable: true, title: it.name, zIndex: 0,
+        content: markerEl({ type: it.type, label: TYPE_GLYPH[it.type] || '', color: LIB_COLORS[tab.type], small: true }),
+        gmpClickable: true, title: `備用庫：${it.name}`, zIndex: 0,
       });
-      m.addEventListener('gmp-click', () => openBackupPopup(it.id));
+      m.addEventListener('gmp-click', () => openLibPopup(it.id));
       backupMarkers.push(m);
     }
   }
@@ -251,23 +239,6 @@ export async function createMapView(container, { getSchedule }) {
     });
   }
 
-  // ---------- 參考規劃標記 ----------
-  function renderRef() {
-    refMarkers.forEach(m => (m.map = null));
-    refMarkers = [];
-    const ref = state.refPlan;
-    if (!ref) return;
-    for (const tab of ref.backup?.tabs || []) for (const it of tab.items) {
-      const m = new AdvancedMarkerElement({
-        map, position: { lat: it.lat, lng: it.lng },
-        content: markerEl({ type: it.type, label: TYPE_GLYPH[it.type] || '', color: REF_COLOR, small: true }),
-        gmpClickable: true, title: `${ref.name}：${it.name}`, zIndex: 0,
-      });
-      m.addEventListener('gmp-click', () => openRefPopup(it, tab));
-      refMarkers.push(m);
-    }
-  }
-
   // ---------- 小視窗 ----------
   function openStopPopup(stopId) {
     const f = findStop(stopId);
@@ -290,7 +261,9 @@ export async function createMapView(container, { getSchedule }) {
     } });
     const stayIn = h('input', { type: 'number', min: 0, step: 5, value: stop.stayMin ?? 0, class: 'num', onChange: () => updateStop(stopId, { stayMin: Math.max(0, +stayIn.value || 0) }) });
     const noteIn = h('textarea', { rows: 2, class: 'full', onChange: () => updateStop(stopId, { note: noteIn.value }) }, stop.note || '');
-    const tabSel = selectEl(tabOptions(), state.activeTab);
+    // 移回備用庫：頁簽預設同類型的頁簽、天數預設為原本那一天
+    const tabSel = selectEl(tabOptions(), state.library ? libTabForType(stop.type).id : null);
+    const backDays = dayPicker([dayIdx + 1]);
     const content = h('div', { class: 'popup' },
       h('label', { class: 'row' }, '名稱', nameIn),
       h('label', { class: 'row' }, '類型', typeSel),
@@ -298,7 +271,12 @@ export async function createMapView(container, { getSchedule }) {
       stop.type !== 'hotel' ? h('label', { class: 'row' }, '停留', stayIn, '分鐘') : h('div', { class: 'muted small' }, '住宿不計停留時間'),
       h('label', { class: 'row col' }, '備註', noteIn),
       h('div', { class: 'row' }, tabSel,
-        h('button', { onClick: () => { stopToBackup(stopId, tabSel.value); info.close(); } }, '移回備用庫')),
+        h('button', { onClick: () => {
+          const r = stopToLibrary(stopId, tabSel.value, null, backDays.get());
+          info.close();
+          if (r?.existed) toast(`備用庫已有「${stop.name}」，已從行程移除`);
+        } }, '移回備用庫')),
+      h('div', { class: 'row small' }, h('span', { class: 'muted' }, '移回後適用：'), backDays.el),
       h('div', { class: 'row end' },
         h('button', { class: 'danger', onClick: async () => {
           if (await confirmDialog(`確定從行程刪除「${stop.name}」？`, '刪除', true)) { removeStop(stopId); info.close(); }
@@ -307,61 +285,28 @@ export async function createMapView(container, { getSchedule }) {
     openPopup(content, { lat: stop.lat, lng: stop.lng }, { kind: 'stop', id: stopId });
   }
 
-  function openBackupPopup(itemId) {
-    const f = findBackup(itemId);
-    if (!f) return;
-    const it = f.item;
-    const nameIn = h('input', { type: 'text', value: it.name, class: 'full', onChange: () => updateBackupItem(itemId, { name: nameIn.value.trim() || '自訂地點' }) });
-    const typeSel = selectEl(typeOptions(), it.type, { onChange: () => updateBackupItem(itemId, { type: typeSel.value, stayMin: DEFAULT_STAY[typeSel.value] }) });
-    const stayIn = h('input', { type: 'number', min: 0, step: 5, value: it.stayMin ?? 0, class: 'num', onChange: () => updateBackupItem(itemId, { stayMin: Math.max(0, +stayIn.value || 0) }) });
-    const noteIn = h('textarea', { rows: 2, class: 'full', onChange: () => updateBackupItem(itemId, { note: noteIn.value }) }, it.note || '');
-    const tabSel = selectEl(tabOptions(), f.tab.id, { onChange: () => moveBackupItem(itemId, tabSel.value) });
-    const content = h('div', { class: 'popup' },
-      h('div', { class: 'muted small' }, `備用庫・${f.tab.name}${it.addedBy ? `・${it.addedBy} 加入` : ''}`),
-      h('label', { class: 'row' }, '名稱', nameIn),
-      h('label', { class: 'row' }, '類型', typeSel),
-      h('label', { class: 'row' }, '停留', stayIn, '分鐘'),
-      h('label', { class: 'row col' }, '備註', noteIn),
-      h('label', { class: 'row' }, '頁簽', tabSel),
-      dayAddRow((d) => { backupToTrip(itemId, d); info.close(); toast(`已加到 Day ${d + 1}`, 'ok'); }),
-      h('div', { class: 'row end' },
-        h('button', { class: 'danger', onClick: async () => { if (await confirmRemoveBackup(itemId)) info.close(); } }, '刪除')),
-    );
-    openPopup(content, { lat: it.lat, lng: it.lng }, { kind: 'backup', id: itemId });
-  }
-
-  /** 專案共用點：唯讀資訊＋加到 Day X（複製，共用庫保留原點） */
+  /** 備用點小視窗：名稱、頁簽、停留、天數、備註可直接修改；加到 Day X（複製，備用庫保留原點）；刪除 */
   function openLibPopup(itemId) {
     const f = findLibItem(itemId);
     if (!f) return;
     const it = f.item;
-    const days = scheduledDays(it);
+    const nameIn = h('input', { type: 'text', value: it.name, class: 'full', onChange: () => updateLibItem(itemId, { name: nameIn.value.trim() || '自訂地點' }) });
+    const stayIn = h('input', { type: 'number', min: 0, step: 5, value: it.stayMin ?? 0, class: 'num', onChange: () => updateLibItem(itemId, { stayMin: Math.max(0, +stayIn.value || 0) }) });
+    const noteIn = h('textarea', { rows: 2, class: 'full', onChange: () => updateLibItem(itemId, { note: noteIn.value }) }, it.note || '');
+    const tabSel = selectEl(tabOptions(), f.tab.id, { onChange: () => { moveLibItem(itemId, tabSel.value); openLibPopup(itemId); } });
     const content = h('div', { class: 'popup' },
-      h('div', { class: 'muted small' }, `專案共用・${f.tab.name}${it.addedBy ? `・${it.addedBy} 加入` : ''}`),
-      h('div', { class: 'popup-title' }, it.name),
-      it.type !== 'hotel' ? h('div', { class: 'small' }, `停留 ${it.stayMin ?? 0} 分鐘`) : null,
-      it.note ? h('div', { class: 'small pre' + (it.note.startsWith('⚠') ? ' warn' : '') }, it.note) : null,
-      days.length ? h('div', {}, h('span', { class: 'tag' }, `已排入 ${days.map(d => 'D' + d).join('、')}`)) : null,
-      dayAddRow((d) => { libToTrip(itemId, d); info.close(); toast(`已加到 Day ${d + 1}（專案備用庫保留原點）`, 'ok'); }),
-      h('div', { class: 'small muted' }, '要修改內容請到「編輯專案備用庫」'),
+      h('div', { class: 'muted small' }, `備用庫・${f.tab.name}${it.addedBy ? `・${it.addedBy} 加入` : ''}`),
+      h('label', { class: 'row' }, '名稱', nameIn),
+      h('label', { class: 'row' }, '頁簽', tabSel),
+      it.type !== 'hotel' ? h('label', { class: 'row' }, '停留', stayIn, '分鐘') : h('div', { class: 'muted small' }, '住宿不計停留時間'),
+      h('div', { class: 'row' }, h('span', {}, '適用'), daysButton(it.days, (d) => { updateLibItem(itemId, { days: d }); openLibPopup(itemId); })),
+      h('label', { class: 'row col' }, '備註', noteIn),
+      scheduledTags(it),
+      dayAddRow((d) => { libToTrip(itemId, d); info.close(); toast(`已加到 Day ${d + 1}（備用庫保留原點）`, 'ok'); }),
+      h('div', { class: 'row end' },
+        h('button', { class: 'danger', onClick: async () => { if (await confirmRemoveLibItem(itemId)) info.close(); } }, '刪除')),
     );
     openPopup(content, { lat: it.lat, lng: it.lng }, { kind: 'lib', id: itemId });
-  }
-
-  function openRefPopup(it, tab) {
-    const exists = state.plan.backup.tabs.some(t => t.items.some(x => samePlace(x, it)));
-    const tabSel = selectEl(tabOptions(), state.activeTab);
-    const content = h('div', { class: 'popup' },
-      h('div', { class: 'muted small' }, `參考：${state.refPlan?.name}・${tab.name}`),
-      h('div', { class: 'popup-title' }, it.name),
-      exists ? h('div', { class: 'tag' }, '已有')
-        : h('div', { class: 'row' }, tabSel, h('button', { class: 'primary', onClick: () => {
-          const target = state.plan.backup.tabs.find(t => t.id === tabSel.value);
-          addBackupItem(tabSel.value, { ...it, type: target?.kind === HOTEL_TAB_KIND ? 'hotel' : it.type });
-          info.close(); toast('已加入備用庫', 'ok');
-        } }, '加到我的備用庫')),
-    );
-    openPopup(content, { lat: it.lat, lng: it.lng });
   }
 
   /** 新增地點小視窗（點地圖或搜尋） */
@@ -390,27 +335,21 @@ export async function createMapView(container, { getSchedule }) {
 
   // 每一層各自重繪，其中一層出錯也不會讓其他層（例如備用點）殘留舊標記
   const safe = (fn) => () => { try { fn(); } catch (e) { console.error(e); } };
-  const renderAll = () => [closeStalePopup, renderTrip, renderLines, renderBackup, renderHover, renderRef].forEach(f => safe(f)());
+  const renderAll = () => [closeStalePopup, renderTrip, renderLines, renderBackup, renderHover].forEach(f => safe(f)());
 
   offs.push(on('plan', renderAll));
   offs.push(on('routes', () => { safe(renderLines)(); if (state.hoverBackup) safe(renderHover)(); }));
-  offs.push(on('select', () => { safe(renderTrip)(); safe(renderLines)(); }));
+  offs.push(on('select', () => { safe(renderTrip)(); safe(renderLines)(); safe(renderBackup)(); }));
   // 選取只做強調，不縮放、不移動地圖（維持使用者目前的畫面）
   offs.push(on('stopSelect', () => { safe(renderTrip)(); safe(renderLines)(); safe(renderHover)(); }));
   offs.push(on('backupView', safe(renderBackup)));
   offs.push(on('backupHover', safe(renderHover)));
-  offs.push(on('refPlan', safe(renderRef)));
   offs.push(on('library', () => { safe(closeStalePopup)(); safe(renderBackup)(); }));
   renderAll();
 
   return {
     map,
     openAddPopup,
-    focusBackup(id) {
-      const f = findBackup(id); if (!f) return;
-      map.panTo({ lat: f.item.lat, lng: f.item.lng });
-      openBackupPopup(id);
-    },
     focusLibItem(id) {
       const f = findLibItem(id); if (!f) return;
       map.panTo({ lat: f.item.lat, lng: f.item.lng });

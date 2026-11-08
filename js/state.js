@@ -1,24 +1,24 @@
 // 單一資料來源：目前專案、規劃與畫面狀態；所有修改經由 mutate()，再以事件通知地圖與清單。
-import { uid, addDays, samePlace, coordKey } from './utils.js';
+// 備用庫只有一份（每個專案一份，所有規劃共用），資料與操作在 library.js
+import { uid, addDays, samePlace, clone } from './utils.js';
 
 export const state = {
   user: null,
   nickname: '',
   project: null,      // { id, ...projectDoc }
   planId: null,
-  plan: null,         // 規劃文件內容
+  plan: null,         // 規劃文件內容（name、days）
   selectedDay: null,  // 目前選中的天（index）或 null
-  activeTab: null,    // 備用庫目前頁簽 id
   showBackupOnMap: false, // 地圖顯示備用點（目前頁簽）；預設不顯示
   selectedStop: null,     // 選取的行程點 id
   selectedStartOf: null,  // 從起點列選取時：那一天的 index
   hoverBackup: null,      // 滑鼠停留中的備用點（暫時顯示在地圖上）
-  refPlan: null,      // 參考中的其他規劃 { id, name, backup }
-  // 專案備用庫（library.js）
-  library: null,          // { tabs:[{id,name,type,items}] }；規劃畫面為唯讀訂閱，編輯畫面可修改
-  backupSource: 'plan',   // 規劃畫面右下備用庫：'plan'＝本規劃、'lib'＝專案共用
-  libTab: 'spot',         // 專案共用目前頁簽
-  libSelected: null,      // 編輯畫面選取的共用點 id
+  // 備用庫（library.js）
+  library: null,          // { tabs:[{id,name,type,items}] }
+  libTab: null,           // 目前頁簽 id
+  libSelected: null,      // 編輯畫面選取的備用點 id
+  backupDayMode: 'day',   // 右上選了某一天時，右下備用庫：'day'＝只顯示本日與不限、'all'＝全部
+  libDayFilter: 'all',    // 專案備用庫編輯畫面的天數篩選：'all'、'none'（不限）或 1 起算的天數
 };
 
 const listeners = {};
@@ -35,6 +35,7 @@ export const TYPE_LABEL = { spot: '景點', food: '餐廳', hotel: '住宿', air
 export const DEFAULT_STAY = { spot: 60, food: 60, hotel: 0, airport: 0 };
 export const MODES = ['drive', 'transit', 'walk', 'other'];
 export const MODE_LABEL = { drive: '開車', transit: '大眾運輸', walk: '步行', other: '其他' };
+/** 舊資料（本規劃備用庫）的住宿類頁簽標記 */
 export const HOTEL_TAB_KIND = 'hotel';
 export const START_AIRPORT_STAY = 45;
 
@@ -65,25 +66,45 @@ export function makeStop(pt) {
   };
 }
 
-export function makeBackupItem(pt, tab) {
-  const type = tab?.kind === HOTEL_TAB_KIND ? 'hotel' : (TYPES.includes(pt.type) ? pt.type : 'spot');
-  return {
-    id: uid(), name: pt.name || '自訂地點', placeId: pt.placeId || null,
-    lat: +pt.lat, lng: +pt.lng, type,
-    stayMin: pt.stayMin ?? DEFAULT_STAY[type], note: pt.note || '', addedBy: state.nickname,
-  };
+// ---------- 備用點的「天」 ----------
+// days：1 起算的天數陣列，例如 [1, 3]＝D1、D3；空陣列＝不限
+
+/** 正規化天數：正整數、去重、排序 */
+export function normDays(days) {
+  if (!Array.isArray(days)) return [];
+  return [...new Set(days.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 60))].sort((a, b) => a - b);
 }
 
-export function defaultTabs() {
-  return [{ id: uid(), name: '備用景點', items: [] }, { id: uid(), name: '備用住宿', kind: HOTEL_TAB_KIND, items: [] }];
+/** 實際有效的天數（超出專案天數的不算）；空陣列＝不限 */
+export const effectiveDays = (it, numDays = state.project?.numDays ?? 60) => normDays(it?.days).filter(d => d <= numDays);
+
+/** 備用點是否適用某一天（dayIdx 為 0 起算）：不限的點每天都適用 */
+export function itemForDay(it, dayIdx, numDays) {
+  const ds = effectiveDays(it, numDays);
+  return !ds.length || ds.includes(dayIdx + 1);
 }
 
-/** 空白規劃：只有預設起訖點與兩個預設頁簽 */
+/** 規劃畫面右下備用庫目前是否要依天篩選（右上選了某一天、且切換為「本日」） */
+export const backupDayFilter = () => (state.selectedDay != null && state.backupDayMode === 'day' ? state.selectedDay : null);
+
+/**
+ * 插入位置：數字＝index；{ before: id }／{ after: id }＝放在某個點的前面／後面（清單有篩選時拖曳用）；null＝最後
+ * 須在移除被移動的點之後計算
+ */
+export function resolveIndex(items, pos) {
+  if (pos == null) return items.length;
+  if (typeof pos === 'number') return Math.max(0, Math.min(pos, items.length));
+  if (pos.before) { const i = items.findIndex(x => x.id === pos.before); if (i >= 0) return i; }
+  if (pos.after) { const i = items.findIndex(x => x.id === pos.after); if (i >= 0) return i + 1; }
+  return items.length;
+}
+
+/** 空白規劃：只有預設起訖點 */
 export function blankPlanData(project) {
   const days = Array.from({ length: project.numDays }, (_, i) => newDay(project, i));
   if (project.defaultStart) days[0].stops.push(makeStop({ ...project.defaultStart, type: project.defaultStart.type || 'airport' }));
   if (project.defaultEnd) days[days.length - 1].stops.push(makeStop({ ...project.defaultEnd, type: project.defaultEnd.type || 'airport' }));
-  const plan = { days, backup: { tabs: defaultTabs() } };
+  const plan = { days };
   normalizePlan(plan, project);
   return plan;
 }
@@ -115,13 +136,8 @@ export function normalizePlan(plan, project) {
       if (!s.leg) s.leg = newLeg(project.defaultMode || 'drive');
     }
   }
-  plan.backup ||= { tabs: [] };
-  if (!plan.backup.tabs?.length) plan.backup.tabs = defaultTabs();
   if (plan === state.plan) {
-    if (!plan.backup.tabs.some(t => t.id === state.activeTab)) state.activeTab = plan.backup.tabs[0].id;
     if (state.selectedStop && !findStop(state.selectedStop, plan)) { state.selectedStop = null; state.selectedStartOf = null; }
-    // 滑鼠停留中的點：本規劃備用點被刪除時清掉（專案共用點 src='lib' 不在規劃內，不檢查）
-    if (state.hoverBackup && state.hoverBackup.src !== 'lib' && !findBackup(state.hoverBackup.id, plan)) state.hoverBackup = null;
   }
 }
 
@@ -164,20 +180,10 @@ export function findStop(id, plan = state.plan) {
   return null;
 }
 
-export function findBackup(itemId, plan = state.plan) {
-  for (const tab of plan.backup.tabs) {
-    const idx = tab.items.findIndex(i => i.id === itemId);
-    if (idx >= 0) return { tab, idx, item: tab.items[idx] };
-  }
-  return null;
-}
-
-export const getTab = (id) => state.plan.backup.tabs.find(t => t.id === id);
-
-/** 備用點已排入哪幾天（回傳 1 起算的天數陣列） */
+/** 備用點已排入目前規劃的哪幾天（回傳 1 起算的天數陣列；沒有開啟規劃時為空） */
 export function scheduledDays(item, plan = state.plan) {
   const out = [];
-  plan.days.forEach((d, i) => { if (d.stops.some(s => samePlace(s, item))) out.push(i + 1); });
+  plan?.days.forEach((d, i) => { if (d.stops.some(s => samePlace(s, item))) out.push(i + 1); });
   return out;
 }
 
@@ -242,68 +248,25 @@ export function updateLeg(stopId, patch) {
   mutate(p => { const f = findStop(stopId, p); if (f?.stop.leg) Object.assign(f.stop.leg, patch); });
 }
 
-/** 行程點移回備用庫（從行程移除；已有同 placeId 就不重複加入） */
-export function stopToBackup(id, tabId, index = null) {
-  mutate(p => {
-    const f = findStop(id, p); if (!f) return;
-    p.days[f.dayIdx].stops.splice(f.idx, 1);
-    if (backupHasPlace(f.stop, p)) return;
-    const tab = p.backup.tabs.find(t => t.id === tabId) || p.backup.tabs[0];
-    const item = makeBackupItem({ ...f.stop }, tab);
-    if (index == null) tab.items.push(item); else tab.items.splice(index, 0, item);
-  });
-}
-
+// ---------- 規劃套用到另一個專案（管理員跨專案複製） ----------
 /**
- * 移回備用庫時依類型選頁簽：餐廳 → 名稱含「餐廳」的頁簽；住宿 → 住宿類型頁簽；
- * 其他 → 第一個頁簽；找不到對應頁簽時放目前選中的頁簽
+ * 把規劃的行程調整成目標專案的天數（日期一律跟著目標專案）
+ * - 行程點換新 id
+ * - 超出目標天數的行程點不放進行程，另外回傳（之後放進目標專案的備用庫，天數＝不限）
+ * 回傳 { data:{days}, moved:[{ day, count }], movedStops:[stop] }
  */
-export function backupTabFor(type) {
-  const tabs = state.plan.backup.tabs;
-  let tab = null;
-  if (type === 'food') tab = tabs.find(t => t.name.includes('餐廳'));
-  else if (type === 'hotel') tab = tabs.find(t => t.kind === HOTEL_TAB_KIND) || tabs.find(t => t.name.includes('住宿'));
-  else tab = tabs[0];
-  return (tab || tabs.find(t => t.id === state.activeTab) || tabs[0]).id;
-}
-
-/** 備用庫是否已有同一地點（有 placeId 比 placeId，否則比座標） */
-export function backupHasPlace(pt, plan = state.plan) {
-  return plan.backup.tabs.some(t => t.items.some(it => pt.placeId ? it.placeId === pt.placeId : coordKey(it) === coordKey(pt)));
-}
-
-/** 備用點複製到行程（備用庫保留） */
-/** index 為 'smart' 時插在選取點後面；回傳新點 id 並選取它 */
-export function backupToTrip(itemId, dayIdx, index = 'smart') {
-  const f = findBackup(itemId); if (!f) return null;
-  const it = f.item;
-  const pt = { ...it, stayMin: it.stayMin ?? DEFAULT_STAY[it.type] };
-  const id = index === 'smart' ? addStopToDay(dayIdx, pt, insertIndexFor(dayIdx)) : addStopToDay(dayIdx, pt, index);
-  selectStop(id, false);
-  return id;
-}
-
-export function addBackupItem(tabId, pt) {
-  mutate(p => {
-    const tab = p.backup.tabs.find(t => t.id === tabId) || p.backup.tabs[0];
-    tab.items.push(makeBackupItem(pt, tab));
+export function fitPlanToProject(src, project) {
+  const data = { days: clone(src.days || []) };
+  data.days.forEach(d => (d.stops || []).forEach(s => { s.id = uid(); }));
+  const n = project.numDays;
+  const extra = data.days.slice(n);
+  data.days = data.days.slice(0, n);
+  const moved = [], movedStops = [];
+  extra.forEach((d, k) => {
+    const stops = d.stops || [];
+    movedStops.push(...stops);
+    if (stops.length) moved.push({ day: n + k + 1, count: stops.length });
   });
-}
-
-export function moveBackupItem(itemId, toTabId, index = null) {
-  mutate(p => {
-    const f = findBackup(itemId, p); if (!f) return;
-    f.tab.items.splice(f.idx, 1);
-    const tab = p.backup.tabs.find(t => t.id === toTabId) || f.tab;
-    if (tab.kind === HOTEL_TAB_KIND) { f.item.type = 'hotel'; f.item.stayMin = 0; }
-    if (index == null) tab.items.push(f.item); else tab.items.splice(index, 0, f.item);
-  });
-}
-
-export function updateBackupItem(itemId, patch) {
-  mutate(p => { const f = findBackup(itemId, p); if (f) Object.assign(f.item, patch); });
-}
-
-export function removeBackupItem(itemId) {
-  mutate(p => { const f = findBackup(itemId, p); if (f) f.tab.items.splice(f.idx, 1); });
+  normalizePlan(data, project);
+  return { data, moved, movedStops };
 }

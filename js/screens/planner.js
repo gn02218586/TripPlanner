@@ -1,6 +1,9 @@
-// 主畫面：左地圖、右上行程流程、右下備用庫；頂部列含存檔狀態、歷史、匯出、專案設定
-import { state, on, emit, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js';
-import { startPlanSession, endPlanSession, listHistory, restoreSnapshot, hasUnsaved, saveNow, updateProject, subscribeLibrary } from '../store.js';
+// 主畫面：左地圖、右上行程流程、右下備用庫（專案共用、可直接編輯）；頂部列含存檔狀態、歷史、匯出、專案設定
+import { state, on, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js';
+import {
+  startPlanSession, endPlanSession, listHistory, restoreSnapshot, hasUnsaved, saveNow, updateProject,
+  migratePlanBackups, startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow,
+} from '../store.js';
 import { initRouteCache, requestRoutes, getRouteInfo } from '../routes.js';
 import { computeSchedule } from '../schedule.js';
 import { createMapView } from '../map-view.js';
@@ -17,18 +20,21 @@ const ROUTE_DEBOUNCE = 800;
 export async function mountPlanner(app, project, planId) {
   const offs = [];
   state.selectedDay = null;
-  state.refPlan = null;
   state.selectedStop = null;
   state.selectedStartOf = null;
   state.hoverBackup = null;
 
   app.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'muted' }, '載入規劃中…')));
-  await Promise.all([initRouteCache(project.id), startPlanSession(project.id, planId)]);
-
-  // 專案備用庫：唯讀即時訂閱（在編輯畫面被修改時，共用清單與地圖跟著更新）
-  state.library = null;
-  state.backupSource = 'plan';
-  const unsubLibrary = subscribeLibrary(project.id, (lib) => { state.library = lib; emit('library'); });
+  // 舊資料轉移：各規劃的本規劃備用點合併到專案備用庫（只做一次；失敗時保留舊資料，下次再試）
+  try {
+    const r = await migratePlanBackups(project.id);
+    if (r?.plans) toast(`已把 ${r.plans} 個規劃的備用點合併到專案備用庫`, 'ok', 6000);
+  } catch (e) {
+    console.warn('備用點轉移失敗', e);
+    toast('舊的備用點合併失敗，下次開啟時會再試：' + e.message, 'warn', 6000);
+  }
+  // 規劃與備用庫各自一個編輯工作階段（各自自動存檔、版本衝突檢查、即時同步）
+  await Promise.all([initRouteCache(project.id), startPlanSession(project.id, planId), startLibrarySession(project.id)]);
 
   // 舊資料轉換（一次性）：專案還沒有「每日包車時數」表時，依這份規劃舊的每日覆蓋值建立
   if (!Array.isArray(project.charterHoursByDay)) {
@@ -123,16 +129,29 @@ export async function mountPlanner(app, project, planId) {
   requestAll();
 
   // ---------- 存檔狀態與別人的修改 ----------
+  // 規劃與備用庫兩邊的狀態合併顯示：都存好才是「已儲存」；有衝突／失敗優先顯示
   const STATUS = { saved: '已儲存', dirty: '尚未儲存…', saving: '儲存中…', error: '存檔失敗', conflict: '有衝突' };
-  offs.push(on('saveStatus', (s) => { statusEl.textContent = STATUS[s] || s; statusEl.dataset.s = s; }));
-  offs.push(on('remoteChange', ({ who, apply }) => {
+  const RANK = { conflict: 4, error: 3, saving: 2, dirty: 1, saved: 0 };
+  const st = { plan: 'saved', lib: 'saved' };
+  const showStatus = () => {
+    const s = RANK[st.plan] >= RANK[st.lib] ? st.plan : st.lib;
+    statusEl.textContent = STATUS[s] || s;
+    statusEl.dataset.s = s;
+    statusEl.title = `規劃：${STATUS[st.plan]}／備用庫：${STATUS[st.lib]}`;
+  };
+  offs.push(on('saveStatus', (s) => { st.plan = s; showStatus(); }));
+  offs.push(on('libSaveStatus', (s) => { st.lib = s; showStatus(); }));
+  const remoteBanner = (text) => ({ apply }) => {
     banner.replaceChildren(
-      h('span', {}, `「${who}」剛修改了這個規劃，是否載入？（會捨棄你尚未儲存的變更）`),
+      h('span', {}, text),
       h('button', { class: 'primary', onClick: () => { apply(); banner.classList.add('hidden'); } }, '載入'),
       h('button', { onClick: () => banner.classList.add('hidden') }, '稍後'));
     banner.classList.remove('hidden');
-  }));
-  offs.push(on('plan', () => { if (!hasUnsaved()) banner.classList.add('hidden'); }));
+  };
+  offs.push(on('remoteChange', (d) => remoteBanner(`「${d.who}」剛修改了這個規劃，是否載入？（會捨棄你尚未儲存的變更）`)(d)));
+  offs.push(on('libRemoteChange', (d) => remoteBanner(`「${d.who}」剛修改了備用庫，是否載入？（會捨棄你尚未儲存的備用庫變更）`)(d)));
+  offs.push(on('plan', () => { if (!hasUnsaved() && !hasUnsavedLibrary()) banner.classList.add('hidden'); }));
+  offs.push(on('library', () => { if (!hasUnsaved() && !hasUnsavedLibrary()) banner.classList.add('hidden'); }));
 
   // Esc 取消選取行程點（輸入框中按 Esc 不處理）
   const onKey = (e) => {
@@ -142,7 +161,11 @@ export async function mountPlanner(app, project, planId) {
   };
   document.addEventListener('keydown', onKey);
 
-  const beforeUnload =(e) => { if (hasUnsaved()) { saveNow(); e.preventDefault(); e.returnValue = ''; } };
+  const beforeUnload = (e) => {
+    if (!hasUnsaved() && !hasUnsavedLibrary()) return;
+    saveNow(); saveLibraryNow();
+    e.preventDefault(); e.returnValue = '';
+  };
   window.addEventListener('beforeunload', beforeUnload);
 
   async function renamePlan() {
@@ -174,7 +197,7 @@ export async function mountPlanner(app, project, planId) {
       onSaved: async (id, data) => {
         const boundsChanged = data.bounds && JSON.stringify(data.bounds) !== JSON.stringify(state.project.bounds);
         Object.assign(state.project, data);
-        if (boundsChanged) { await saveNow(); location.reload(); return; }
+        if (boundsChanged) { await Promise.all([saveNow(), saveLibraryNow()]); location.reload(); return; }
         mutate(() => {}); // 天數、日期、包車時數、冬季係數等變更：重新正規化、重算並存檔
       },
     });
@@ -184,11 +207,10 @@ export async function mountPlanner(app, project, planId) {
     window.removeEventListener('beforeunload', beforeUnload);
     document.removeEventListener('keydown', onKey);
     state.selectedStop = null; state.hoverBackup = null;
-    unsubLibrary();
     debouncedRequest.cancel();
     offs.forEach(f => f());
     mapView.destroy(); itinView.destroy(); backupView.destroy();
-    await endPlanSession();
-    state.plan = null; state.planId = null; state.refPlan = null; state.library = null; state.backupSource = 'plan';
+    await Promise.all([endPlanSession(), endLibrarySession()]);
+    state.plan = null; state.planId = null; state.library = null;
   };
 }

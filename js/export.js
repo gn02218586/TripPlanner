@@ -1,9 +1,11 @@
-// 匯出：純文字行程表、JSON、Google 地圖（KML＋每天導航連結）
+// 匯出：純文字行程表、匯入格式（可直接匯入、完整還原）、JSON、Google 地圖（KML＋每天導航連結）
 import { state, TYPE_LABEL, MODE_LABEL, dayCharterHours, prevPoint } from './state.js';
 import { computeSchedule } from './schedule.js';
 import { stopLabelMap } from './markers.js';
 import { buildKML, daysWithStops, dayNavLinks } from './gmaps-export.js';
 import { h, openModal, copyText, downloadFile, fmtHM, fmtDur, fmtDist, fmtDate, clone, toast } from './utils.js';
+import { toImportText } from './text-format.js';
+import { getLibrary } from './store.js';
 
 const WAYPOINT_LIMIT = { desktop: 9, mobile: 3 };
 
@@ -11,7 +13,8 @@ export function planToJSON() {
   const p = state.plan;
   return JSON.stringify({
     project: { name: state.project.name, startDate: state.project.startDate, numDays: state.project.numDays },
-    plan: clone({ name: p.name, creator: p.creator, lastEditor: p.lastEditor, updatedAt: p.updatedAt, days: p.days, backup: p.backup }),
+    plan: clone({ name: p.name, creator: p.creator, lastEditor: p.lastEditor, updatedAt: p.updatedAt, days: p.days }),
+    library: clone({ tabs: state.library?.tabs || [] }),   // 專案備用庫（所有規劃共用）
   }, null, 2);
 }
 
@@ -50,9 +53,9 @@ export function planToText() {
     segs.forEach((g, k) => L.push(`  Google Maps 導航${segs.length > 1 ? `（第 ${k + 1} 段）` : ''}：${g.url}`));
     L.push('');
   });
-  const tabs = p.backup.tabs.filter(t => t.items.length);
+  const tabs = (state.library?.tabs || []).filter(t => t.items.length);
   if (tabs.length) {
-    L.push('■ 備用庫');
+    L.push('■ 備用庫（專案共用）');
     tabs.forEach(t => L.push(`  ${t.name}：${t.items.map(i => i.name).join('、')}`));
   }
   return L.join('\n');
@@ -116,22 +119,35 @@ function googlePanel() {
       h('li', {}, '手機開啟 Google 地圖 App（登入同一個 Google 帳號），點下方「已儲存」→ 往下找到「地圖」，就能看到這張地圖（需要網路連線）。')));
 }
 
+/** 匯入格式：專案設定、規劃、本規劃備用庫、專案備用庫（規劃畫面已即時訂閱專案備用庫；還沒載入時先讀取） */
+export async function planToImportText() {
+  const library = state.library || await getLibrary(state.project.id);
+  return toImportText({ project: state.project, plan: state.plan, library });
+}
+
 export function openExport() {
   const base = `${safeName(state.project.name)}_${safeName(state.plan.name)}`;
   const area = h('textarea', { class: 'export-area', readonly: true });
   const textBox = h('div', {}, area,
     h('div', { class: 'row end' },
       h('button', { onClick: () => copyText(area.value) }, '複製'),
-      h('button', { class: 'primary', onClick: () => mode === 'text'
-        ? downloadFile(base + '.txt', area.value)
-        : downloadFile(base + '.json', area.value, 'application/json') }, '下載')));
+      h('button', { class: 'primary', onClick: () => mode === 'json'
+        ? downloadFile(base + '.json', area.value, 'application/json')
+        : downloadFile(base + (mode === 'import' ? '_匯入格式' : '') + '.txt', area.value) }, '下載')));
+  const importHint = h('div', { class: 'small muted' },
+    '這份文字可以在首頁「匯入成新專案」或專案內「匯入行程」直接匯入，完整還原專案設定、行程、備用庫與專案備用庫。地點以地點 ID 與座標記錄，匯入時不必重新搜尋。');
   const gBox = googlePanel();
   let mode = 'text';
-  const show = () => {
+  const show = async () => {
     textBox.classList.toggle('hidden', mode === 'google');
     gBox.classList.toggle('hidden', mode !== 'google');
+    importHint.classList.toggle('hidden', mode !== 'import');
     if (mode === 'text') area.value = planToText();
     if (mode === 'json') area.value = planToJSON();
+    if (mode === 'import') {
+      area.value = '產生中…';
+      try { area.value = await planToImportText(); } catch (e) { area.value = '產生失敗：' + e.message; }
+    }
   };
   const tabBtn = (m, label) => h('button', { class: 'chip' + (mode === m ? ' active' : ''), onClick: (e) => {
     mode = m; show();
@@ -139,8 +155,8 @@ export function openExport() {
     e.target.classList.add('active');
   } }, label);
   const body = h('div', {},
-    h('div', { class: 'row' }, tabBtn('text', '純文字行程表'), tabBtn('json', 'JSON'), tabBtn('google', 'Google 地圖（KML／導航）')),
-    textBox, gBox);
+    h('div', { class: 'row' }, tabBtn('text', '純文字行程表'), tabBtn('import', '匯出成匯入格式'), tabBtn('json', 'JSON'), tabBtn('google', 'Google 地圖（KML／導航）')),
+    importHint, textBox, gBox);
   show();
   openModal({ title: '匯出', body, wide: true });
 }

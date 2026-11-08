@@ -1,14 +1,15 @@
-// 專案備用庫編輯畫面的地圖：三個頁簽用不同顏色標記、選取強調（不縮放）、點地圖／POI 加入、標記小視窗編輯
+// 專案備用庫編輯畫面的地圖：依頁簽類型配色顯示所有頁簽的點、選取強調（不縮放）、點地圖／POI 加入、標記小視窗編輯
 import { lib } from './maps-loader.js';
 import { MAP_ID } from '../config.js';
 import { state, on } from './state.js';
 import { markerEl, LIB_COLORS, TYPE_GLYPH } from './markers.js';
 import {
-  LIB_TABS, findLibItem, addLibItem, moveLibItem, updateLibItem, selectLibItem,
+  findLibItem, addLibItem, moveLibItem, updateLibItem, selectLibItem, libItemMatches,
 } from './library.js';
+import { dayPicker, daysButton } from './ui-common.js';
 import { h, selectEl, toast } from './utils.js';
 
-export async function createLibraryMap(container, { onRemove }) {
+export async function createLibraryMap(container, { onRemove, getAddDays = () => [] }) {
   const { Map, InfoWindow } = await lib('maps');
   const { AdvancedMarkerElement } = await lib('marker');
   const { Place } = await lib('places');
@@ -32,7 +33,7 @@ export async function createLibraryMap(container, { onRemove }) {
     lat: typeof pos.lat === 'function' ? pos.lat() : pos.lat,
     lng: typeof pos.lng === 'function' ? pos.lng() : pos.lng,
   });
-  const tabOpts = () => LIB_TABS.map(t => ({ value: t.id, label: t.name }));
+  const tabOpts = () => state.library.tabs.map(t => ({ value: t.id, label: t.name }));
   const clearTemp = () => { if (tempMarker) { tempMarker.map = null; tempMarker = null; } };
 
   function openPopup(content, pos, ref = null) {
@@ -49,12 +50,13 @@ export async function createLibraryMap(container, { onRemove }) {
     markers.forEach(m => (m.map = null));
     markers = [];
     if (popupFor && !findLibItem(popupFor)) { info.close(); popupFor = null; }
-    for (const tab of state.library.tabs) for (const it of tab.items) {
+    // 只顯示符合天數篩選的點
+    for (const tab of state.library.tabs) for (const it of tab.items.filter(x => libItemMatches(x))) {
       const selected = it.id === state.libSelected;
       const m = new AdvancedMarkerElement({
         map, position: { lat: it.lat, lng: it.lng },
         // 選取的點放大並顯示名稱；其他點滑鼠移上顯示名稱
-        content: markerEl({ type: it.type, label: TYPE_GLYPH[it.type] || '', name: selected ? it.name : '', color: LIB_COLORS[tab.id], selected, small: !selected }),
+        content: markerEl({ type: it.type, label: TYPE_GLYPH[it.type] || '', name: selected ? it.name : '', color: LIB_COLORS[tab.type], selected, small: !selected }),
         gmpClickable: true, title: `${tab.name}：${it.name}`, zIndex: selected ? 1000 : 10,
       });
       m.addEventListener('gmp-click', () => {
@@ -79,6 +81,7 @@ export async function createLibraryMap(container, { onRemove }) {
       h('label', { class: 'row' }, '名稱', nameIn),
       h('label', { class: 'row' }, '頁簽', tabSel),
       it.type !== 'hotel' ? h('label', { class: 'row' }, '停留', stayIn, '分鐘') : h('div', { class: 'muted small' }, '住宿不計停留時間'),
+      h('div', { class: 'row' }, h('span', {}, '適用'), daysButton(it.days, (d) => { updateLibItem(itemId, { days: d }); openItemPopup(itemId); })),
       h('label', { class: 'row col' }, '備註', noteIn),
       h('div', { class: 'row end' },
         h('button', { class: 'danger', onClick: async () => { if (await onRemove(itemId)) info.close(); } }, '刪除')),
@@ -92,10 +95,12 @@ export async function createLibraryMap(container, { onRemove }) {
     tempMarker = new AdvancedMarkerElement({ map, position: { lat: pt.lat, lng: pt.lng }, content: markerEl({ type: 'spot', label: '＋', color: '#222' }) });
     const nameIn = h('input', { type: 'text', value: pt.name || '自訂地點', class: 'full' });
     const tabSel = selectEl(tabOpts(), state.libTab);
+    const picker = dayPicker(getAddDays());
     const content = h('div', { class: 'popup add-panel' },
       h('label', { class: 'row' }, '名稱', nameIn),
+      h('div', { class: 'row small' }, h('span', { class: 'muted' }, '適用：'), picker.el),
       h('div', { class: 'row' }, tabSel, h('button', { class: 'primary', onClick: () => {
-        const r = addLibItem(tabSel.value, { ...pt, name: nameIn.value.trim() || '自訂地點' });
+        const r = addLibItem(tabSel.value, { ...pt, name: nameIn.value.trim() || '自訂地點', days: picker.get() });
         info.close(); clearTemp();
         if (!r.added) toast('專案備用庫已有這個地點', 'warn');
         else toast('已加入專案備用庫', 'ok');
@@ -122,7 +127,8 @@ export async function createLibraryMap(container, { onRemove }) {
 
   const safeRender = () => { try { render(); } catch (e) { console.error(e); } };
   offs.push(on('library', safeRender));
-  offs.push(on('libSelect', safeRender));   // 選取只做強調，不縮放、不移動地圖
+  offs.push(on('libSelect', safeRender));
+  offs.push(on('libFilter', safeRender));   // 選取只做強調，不縮放、不移動地圖
   safeRender();
 
   return {

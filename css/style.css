@@ -269,13 +269,6 @@ input.day-time { padding: 1px 4px; font-size: 12px; }
 .cmp-dim { color: #9aa0a6; }
 /* 備用點與選取點的比較 */
 .bcompare { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; background: #f1f4f9; border-radius: 4px; padding: 3px 8px; margin-left: 26px; }
-.ref-panel { position: absolute; right: 12px; top: 56px; width: 340px; max-width: calc(100% - 24px); max-height: calc(100% - 70px); background: #fff; border: 2px solid #7b3fe4; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.2); z-index: 500; display: flex; flex-direction: column; padding: 10px; gap: 6px; }
-.ref-head { display: flex; justify-content: space-between; align-items: center; }
-.ref-content { flex: 1; }
-.ref-tab { margin: 8px 0; }
-.ref-tab ul { list-style: none; margin: 4px 0; padding: 0; }
-.ref-tab-head { display: flex; justify-content: space-between; align-items: center; }
-.ref-tab .bitem { cursor: default; }
 
 /* 地圖小視窗 */
 .popup { min-width: 230px; max-width: 300px; font-size: 13px; }
@@ -406,7 +399,7 @@ input.day-time { padding: 1px 4px; font-size: 12px; }
 /* 編輯畫面：右側整欄是備用庫 */
 .lib-side .lib-toolbar { padding: 8px 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
 .lib-side .lib-backup { flex: 1; height: auto; }
-.lib-row { cursor: grab; flex-wrap: nowrap; }
+.lib-row { cursor: grab; flex-wrap: wrap; row-gap: 3px; }
 .lib-row.selected { background: #eef4ff; box-shadow: inset 3px 0 0 var(--primary); }
 .lib-row .bname { flex: 0 1 auto; min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-stay { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
@@ -417,3 +410,28 @@ input.day-time { padding: 1px 4px; font-size: 12px; }
 .ip-target { gap: 10px; flex-wrap: wrap; padding: 4px 0; }
 .import-summary { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; font-size: 13px; }
 .copy-progress { min-width: 260px; padding: 8px 0; }
+
+/* ---------- 備用點的「天」：顏色與右上天數篩選按鈕相同（markers.dayColor，以 --c 傳入） ---------- */
+.day-tag { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 8px; background: var(--c); color: #fff; font-weight: 600; white-space: nowrap; }
+.day-tag.none { background: #e5e7eb; color: #6b7280; font-weight: 400; }
+.day-tag.stale { background: #f3f4f6; color: #9ca3af; text-decoration: line-through; font-weight: 400; }
+.days-tags, .sched-tags { display: inline-flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+.sched-label { font-size: 11px; color: #1a56c4; margin-right: 1px; white-space: nowrap; }
+.sched-tags { background: #e8f0fe; border-radius: 9px; padding: 1px 4px 1px 6px; }
+.days-btn { padding: 1px 2px; border: 1px dashed transparent; background: transparent; border-radius: 9px; }
+.days-btn:hover { border-color: var(--line); background: #fff; }
+/* 天數多選、天數篩選按鈕：選取＝該天顏色底色；未選＝該天顏色邊框 */
+.day-pick { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.dp-chip, .day-chip { padding: 1px 7px; font-size: 12px; border-radius: 10px; background: #fff; border: 1px solid var(--c, var(--line)); color: var(--c, #555); }
+.dp-chip.active, .day-chip.active { background: var(--c, var(--primary)); border-color: var(--c, var(--primary)); color: #fff; }
+.dp-chip.none { --c: #6b7280; }
+.lib-dayfilter { display: flex; flex-wrap: wrap; gap: 3px; margin: 0; }
+.lib-adddays { gap: 4px; align-items: center; }
+.seg-day .seg-btn[style] { color: var(--c); }
+.seg-day .seg-btn.active[style] { background: var(--c); color: #fff; }
+/* 匯入預覽 */
+.ok-text { color: #1e7e34; font-size: 12px; }
+.ip-dim { opacity: .45; }
+.ip-project-box { border: 1px dashed var(--line); border-radius: 6px; padding: 6px 8px; }
+.ip-project { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
+.ip-grid { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; }

@@ -124,8 +124,9 @@ export function transitDepartureDate(tripDateStr, minutes) {
 
 // ---------- 座標 ----------
 export const coordKey = (p) => `${(+p.lat).toFixed(6)},${(+p.lng).toFixed(6)}`;
+/** 是否為同一地點：兩邊都有地點 ID 時比對 ID，否則比對座標（6 位小數） */
 export const samePlace = (a, b) =>
-  !!a && !!b && ((a.placeId && b.placeId && a.placeId === b.placeId) || coordKey(a) === coordKey(b));
+  !!a && !!b && (a.placeId && b.placeId ? a.placeId === b.placeId : coordKey(a) === coordKey(b));
 
 /** Google Encoded Polyline 編碼 */
 export function encodePath(points) {

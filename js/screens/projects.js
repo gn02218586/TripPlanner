@@ -4,6 +4,7 @@ import { h, fmtDate, fmtDateTime } from '../utils.js';
 import { openProjectForm } from './project-form.js';
 import { topBar } from './common.js';
 import { buildBranch } from './plans.js';
+import { openImportProject } from '../import.js';
 import { isAdmin, accountLabel } from '../accounts.js';
 
 const STUB_Y = 30;   // 分支連接線在第一張規劃卡片的高度（與 CSS 一致）
@@ -22,7 +23,8 @@ export async function mountProjects(app, expandId = null) {
     topBar([h('strong', {}, isAdmin() ? '所有專案（管理員）' : '專案與規劃')]),
     h('div', { class: 'page-body page-wide' },
       h('div', { class: 'row' },
-        h('button', { class: 'primary', onClick: () => openProjectForm({ onSaved: (id) => { location.hash = `#/p/${id}`; } }) }, '＋ 新建專案')),
+        h('button', { class: 'primary', onClick: () => openProjectForm({ onSaved: (id) => { location.hash = `#/p/${id}`; } }) }, '＋ 新建專案'),
+        h('button', { onClick: () => openImportProject(), title: '貼上「匯出成匯入格式」的文字，建立新的專案（含規劃、備用庫與專案備用庫）' }, '匯入成新專案')),
       layout));
   app.replaceChildren(page);
 
