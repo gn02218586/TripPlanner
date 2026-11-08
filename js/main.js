@@ -1,7 +1,7 @@
 // 進入點：檢查設定 → 登入 → 依網址（#/、#/p/專案、#/p/專案/規劃、#/lib/專案、#/accounts）切換畫面
-import { GOOGLE_MAPS_API_KEY, MAP_ID, firebaseConfig } from '../config.js?v=2026-11-08-2';
-import { h } from './utils.js?v=2026-11-08-2';
-import { startVersionCheck, setUnsavedHooks } from './version.js?v=2026-11-08-2';
+import { GOOGLE_MAPS_API_KEY, MAP_ID, firebaseConfig } from '../config.js?v=2026-11-09-1';
+import { h } from './utils.js?v=2026-11-09-1';
+import { startVersionCheck, setUnsavedHooks } from './version.js?v=2026-11-09-1';
 
 const app = document.getElementById('app');
 
@@ -24,22 +24,22 @@ if (unconfigured) {
 }
 
 async function start() {
-  const { auth, onAuthStateChanged } = await import('./firebase.js?v=2026-11-08-2');
-  const { state } = await import('./state.js?v=2026-11-08-2');
-  const { getProject, hasUnsaved, hasUnsavedLibrary, saveNow, saveLibraryNow } = await import('./store.js?v=2026-11-08-2');
+  const { auth, onAuthStateChanged } = await import('./firebase.js?v=2026-11-09-1');
+  const { state } = await import('./state.js?v=2026-11-09-1');
+  const { getProject, hasUnsaved, hasUnsavedLibrary, saveNow, saveLibraryNow } = await import('./store.js?v=2026-11-09-1');
   // 「網站已更新」重新整理前：先把規劃與備用庫尚未儲存的修改存好
   setUnsavedHooks({
     hasUnsaved: () => hasUnsaved() || hasUnsavedLibrary(),
     saveAll: () => Promise.all([saveNow(), saveLibraryNow()]),
   });
-  const { mountLogin } = await import('./screens/login.js?v=2026-11-08-2');
-  const { mountProjects } = await import('./screens/projects.js?v=2026-11-08-2');
-  const { mountPlanner } = await import('./screens/planner.js?v=2026-11-08-2');
-  const { mountLibrary } = await import('./screens/library.js?v=2026-11-08-2');
-  const { refreshNickname } = await import('./screens/common.js?v=2026-11-08-2');
-  const { mountAccounts } = await import('./screens/accounts.js?v=2026-11-08-2');
-  const { startPresence, stopPresence, startPresenceWatch, stopPresenceWatch, setPresenceScreen } = await import('./presence.js?v=2026-11-08-2');
-  const { isAdmin } = await import('./accounts.js?v=2026-11-08-2');
+  const { mountLogin } = await import('./screens/login.js?v=2026-11-09-1');
+  const { mountProjects } = await import('./screens/projects.js?v=2026-11-09-1');
+  const { mountPlanner } = await import('./screens/planner.js?v=2026-11-09-1');
+  const { mountLibrary } = await import('./screens/library.js?v=2026-11-09-1');
+  const { refreshNickname } = await import('./screens/common.js?v=2026-11-09-1');
+  const { mountAccounts } = await import('./screens/accounts.js?v=2026-11-09-1');
+  const { startPresence, stopPresence, startPresenceWatch, stopPresenceWatch, setPresenceScreen } = await import('./presence.js?v=2026-11-09-1');
+  const { isAdmin } = await import('./accounts.js?v=2026-11-09-1');
 
   let cleanup = null;
   let token = 0;

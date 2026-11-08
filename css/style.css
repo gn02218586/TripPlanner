@@ -189,6 +189,9 @@ gmp-place-autocomplete::part(prediction-list) { min-width: 360px; width: max-con
 .stop-main { flex: 1; min-width: 0; }
 .stop-name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .stop-name a { color: var(--text); }
+/* 行程點名稱、備用點名稱：可點（打開地圖上的編輯視窗） */
+.stop-name-link, .lib-row .bname { cursor: pointer; }
+.stop-name-link:hover, .lib-row .bname:hover { text-decoration: underline; color: var(--primary); }
 .stop-label { color: #fff; font-size: 11px; padding: 0 5px; border-radius: 8px; font-weight: 700; }
 .stop-times { margin-top: 2px; }
 /* 每天起點列（由前一天最後一點推導，不能拖曳） */
@@ -278,6 +281,11 @@ input.day-time { padding: 1px 4px; font-size: 12px; }
 .popup-title { font-weight: 700; font-size: 14px; margin: 4px 0; }
 
 /* ---------- 標記 ---------- */
+/* 搜尋結果星星：中心對準地點，蓋在所有標記上 */
+.search-star { width: 40px; height: 40px; transform: translateY(50%); pointer-events: none;
+  filter: drop-shadow(0 0 3px #fff) drop-shadow(0 1px 3px rgba(0,0,0,.6)); animation: star-pop .35s ease-out; }
+.search-star svg { display: block; }
+@keyframes star-pop { from { transform: translateY(50%) scale(.3); opacity: 0; } to { transform: translateY(50%) scale(1); opacity: 1; } }
 .mk { position: relative; transform: translateY(50%); filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); cursor: pointer; transition: opacity .2s; }
 /* 標記名稱：放在編號右側，不影響錨點；過長截斷加「…」 */
 .mk-name {

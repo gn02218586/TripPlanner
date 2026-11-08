@@ -1,6 +1,6 @@
 // 單一資料來源：目前專案、規劃與畫面狀態；所有修改經由 mutate()，再以事件通知地圖與清單。
 // 備用庫只有一份（每個專案一份，所有規劃共用），資料與操作在 library.js
-import { uid, addDays, samePlace, clone, toast } from './utils.js?v=2026-11-08-2';
+import { uid, addDays, samePlace, clone, toast } from './utils.js?v=2026-11-09-1';
 
 export const state = {
   user: null,

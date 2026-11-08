@@ -2,9 +2,9 @@
 // - APP_VERSION 與 version.json 由 tools/bump_version.py 統一更新（每次上傳前執行），不要手動修改
 // - 網站開著時每 5 分鐘、以及切回分頁時，用不快取的方式讀 version.json；版本不同就在上方顯示「網站已更新」橫幅
 // - 點橫幅重新整理；有尚未儲存的修改時，先存檔、等存好再重新載入
-import { h } from './utils.js?v=2026-11-08-2';
+import { h } from './utils.js?v=2026-11-09-1';
 
-export const APP_VERSION = '2026-11-08-2';
+export const APP_VERSION = '2026-11-09-1';
 
 const CHECK_MS = 5 * 60 * 1000;
 const SAVE_WAIT_MS = 15 * 1000;

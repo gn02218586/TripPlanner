@@ -1,7 +1,7 @@
 // 帳號設定與工具：一個帳號代表一團人；管理員可看到全部專案
 // ※ 管理員 Email 也寫在 firestore.rules 的 isAdmin()，修改時兩處要一致
-import { state } from './state.js?v=2026-11-08-2';
-import { firebaseConfig } from '../config.js?v=2026-11-08-2';
+import { state } from './state.js?v=2026-11-09-1';
+import { firebaseConfig } from '../config.js?v=2026-11-09-1';
 
 /** 帳號沒有「@」時自動補上的網域 */
 export const ACCOUNT_DOMAIN = 'tripplanner.app';

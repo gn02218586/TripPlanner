@@ -1,15 +1,15 @@
 // 右上：行程流程（依天分組）、搜尋、路段資訊、拖曳排序
-import { lib } from './maps-loader.js?v=2026-11-08-2';
+import { lib } from './maps-loader.js?v=2026-11-09-1';
 import {
   state, on, emit, mutate, MODES, MODE_LABEL, updateStop, updateLeg, dayCharterHours, selectStop,
   prevPoint, findStop, removeStop,
-} from './state.js?v=2026-11-08-2';
-import { stopToLibrary } from './library.js?v=2026-11-08-2';
-import { stopLabelMap, typeIcon, dayColor } from './markers.js?v=2026-11-08-2';
-import { retryRoute, gmapsDirUrl } from './routes.js?v=2026-11-08-2';
-import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, fmtShortDur, num, parseHM, toast, confirmDialog } from './utils.js?v=2026-11-08-2';
-import { buildAddPanel, lockControls } from './ui-common.js?v=2026-11-08-2';
-import { makeSortable } from './dnd.js?v=2026-11-08-2';
+} from './state.js?v=2026-11-09-1';
+import { stopToLibrary } from './library.js?v=2026-11-09-1';
+import { stopLabelMap, typeIcon, dayColor } from './markers.js?v=2026-11-09-1';
+import { retryRoute, gmapsDirUrl } from './routes.js?v=2026-11-09-1';
+import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, fmtShortDur, num, parseHM, toast, confirmDialog } from './utils.js?v=2026-11-09-1';
+import { buildAddPanel, lockControls } from './ui-common.js?v=2026-11-09-1';
+import { makeSortable, justDragged } from './dnd.js?v=2026-11-09-1';
 
 export async function createItineraryView(container, { getSchedule, mapView }) {
   const offs = [];
@@ -39,20 +39,28 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
         const place = placePrediction.toPlace();
         await place.fetchFields({ fields: ['id', 'location'] });
         const pt = { name, placeId: place.id, lat: place.location.lat(), lng: place.location.lng() };
-        mapView.map.panTo(pt);
+        // 地圖上用星星標出搜尋結果（取代舊星星）；不縮放，在畫面外才平移
+        mapView.showSearchStar(pt);
         showResult(pt);
       } catch (e) { console.error(e); }
     });
+    // 按 ⊗ 清除或重新輸入：關閉結果面板、移除星星
+    pac.addEventListener('input', closeResult);
     searchBox.append(pac);
   } catch (e) {
     searchBox.append(h('div', { class: 'error small' }, '搜尋元件載入失敗'));
   }
 
+  /** 關閉搜尋結果面板並移除星星（加入行程／備用庫、按 ✕、清除搜尋框時） */
+  function closeResult() {
+    searchResult.replaceChildren();
+    mapView.clearSearchStar();
+  }
+
   function showResult(pt) {
-    const close = () => searchResult.replaceChildren();
     searchResult.replaceChildren(h('div', { class: 'result-card' },
-      h('button', { class: 'icon-btn close', title: '關閉', onClick: close }, '✕'),
-      buildAddPanel(pt, { onDone: close })));
+      h('button', { class: 'icon-btn close', title: '關閉', onClick: closeResult }, '✕'),
+      buildAddPanel(pt, { onDone: closeResult })));
   }
 
   // ---------- 繪製 ----------
@@ -170,7 +178,11 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
         h('div', { class: 'stop-main' },
           h('div', { class: 'stop-name' },
             label ? h('span', { class: 'stop-label', style: { background: color } }, label) : null,
-            h('span', {}, s.name)),
+            h('span', { class: 'stop-name-link', title: '點名稱：在地圖上打開這個點的編輯視窗', onClick: (e) => {
+              e.stopPropagation();   // 不再觸發卡片的選取（避免選取兩次又取消）
+              if (justDragged()) return;
+              mapView.clickStop(s.id);
+            } }, s.name)),
           // 交通（不換行的一組）＋抵達時間（不換行的一組）；寬度不夠時從「抵達」開始換行
           h('div', { class: 'combo-line small' }, leg ? h('span', { class: 'leg-group' }, ...leg.line) : null, times),
           leg?.notes,
@@ -290,5 +302,5 @@ export async function createItineraryView(container, { getSchedule, mapView }) {
   offs.push(on('stopSelect', render));
   render();
 
-  return { destroy() { offs.forEach(f => f()); sortables.forEach(s => s.destroy()); }, render };
+  return { destroy() { offs.forEach(f => f()); sortables.forEach(s => s.destroy()); mapView.clearSearchStar(); }, render };
 }

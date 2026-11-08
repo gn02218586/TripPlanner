@@ -1,17 +1,17 @@
 // 地圖：行程標記、備用庫標記（依頁簽類型配色）、路線、點擊新增與小視窗
-import { lib } from './maps-loader.js?v=2026-11-08-2';
-import { MAP_ID } from '../config.js?v=2026-11-08-2';
+import { lib } from './maps-loader.js?v=2026-11-09-1';
+import { MAP_ID } from '../config.js?v=2026-11-09-1';
 import {
   state, on, mutate, findStop, prevPoint, selectStop, DEFAULT_STAY,
   updateStop, moveStop, removeStop, backupDayFilter, itemForDay,
-} from './state.js?v=2026-11-08-2';
-import { buildTripMarkers, markerEl, legTagEl, compareNodes, dayColor, LIB_COLORS, TYPE_GLYPH } from './markers.js?v=2026-11-08-2';
-import { findLibItem, libToTrip, stopToLibrary, updateLibItem, moveLibItem, libTabForType } from './library.js?v=2026-11-08-2';
-import { compareInfo } from './compare.js?v=2026-11-08-2';
-import { h, selectEl, confirmDialog, toast, fmtShortDur } from './utils.js?v=2026-11-08-2';
+} from './state.js?v=2026-11-09-1';
+import { buildTripMarkers, markerEl, legTagEl, compareNodes, dayColor, LIB_COLORS, TYPE_GLYPH, searchStarEl, panIntoView } from './markers.js?v=2026-11-09-1';
+import { findLibItem, libToTrip, stopToLibrary, updateLibItem, moveLibItem, libTabForType } from './library.js?v=2026-11-09-1';
+import { compareInfo } from './compare.js?v=2026-11-09-1';
+import { h, selectEl, confirmDialog, toast, fmtShortDur } from './utils.js?v=2026-11-09-1';
 import {
   buildAddPanel, typeOptions, dayOptions, tabOptions, dayAddRow, confirmRemoveLibItem, daysButton, dayPicker, scheduledTags, lockControls,
-} from './ui-common.js?v=2026-11-08-2';
+} from './ui-common.js?v=2026-11-09-1';
 
 export async function createMapView(container, { getSchedule }) {
   const { Map, InfoWindow, Polyline } = await lib('maps');
@@ -57,6 +57,18 @@ export async function createMapView(container, { getSchedule }) {
   }
 
   function clearTemp() { if (tempMarker) { tempMarker.map = null; tempMarker = null; } }
+
+  // ---------- 搜尋結果星星（同一時間最多一顆） ----------
+  let searchStar = null;
+  function clearSearchStar() { if (searchStar) { searchStar.map = null; searchStar = null; } }
+  /** 顯示搜尋結果星星；不改縮放，地點在畫面外才平移 */
+  function showSearchStar(pt) {
+    clearSearchStar();
+    searchStar = new AdvancedMarkerElement({
+      map, position: { lat: pt.lat, lng: pt.lng }, content: searchStarEl(pt.name), zIndex: 5000,
+    });
+    panIntoView(map, pt);
+  }
 
   // ---------- 行程標記 ----------
   /** 依天篩選時要顯示的行程點：該天所有點＋該天起點（前一天最後一點） */
@@ -355,9 +367,21 @@ export async function createMapView(container, { getSchedule }) {
   return {
     map,
     openAddPopup,
+    showSearchStar,
+    clearSearchStar,
+    /** 行程清單點名稱：與點地圖標記相同（選取／再點取消、打開小視窗）；不縮放，在畫面外才平移 */
+    clickStop(id) {
+      const f = findStop(id); if (!f) return;
+      selectStop(id);
+      if (state.selectedStop) {
+        panIntoView(map, { lat: f.stop.lat, lng: f.stop.lng });
+        openStopPopup(state.selectedStop);
+      } else info.close();
+    },
+    /** 備用庫清單點名稱：打開備用點小視窗；不縮放，在畫面外才平移 */
     focusLibItem(id) {
       const f = findLibItem(id); if (!f) return;
-      map.panTo({ lat: f.item.lat, lng: f.item.lng });
+      panIntoView(map, { lat: f.item.lat, lng: f.item.lng });
       openLibPopup(id);
     },
     fitDay(di) {
@@ -372,6 +396,6 @@ export async function createMapView(container, { getSchedule }) {
       pts.forEach(p => bb.extend({ lat: p.lat, lng: p.lng }));
       if (pts.length === 1) map.panTo(bb.getCenter()); else map.fitBounds(bb, 60);
     },
-    destroy() { offs.forEach(f => f()); info.close(); },
+    destroy() { offs.forEach(f => f()); info.close(); clearSearchStar(); },
   };
 }

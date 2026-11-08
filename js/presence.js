@@ -5,10 +5,10 @@
 // 權限（firestore.rules）：每個帳號只能建立／更新／刪除 email 等於自己的文件；只有管理員能讀取與刪除全部
 import {
   db, collection, doc, setDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, where, writeBatch, serverTimestamp,
-} from './firebase.js?v=2026-11-08-2';
-import { state, emit, on } from './state.js?v=2026-11-08-2';
-import { currentEmail } from './accounts.js?v=2026-11-08-2';
-import { uid } from './utils.js?v=2026-11-08-2';
+} from './firebase.js?v=2026-11-09-1';
+import { state, emit, on } from './state.js?v=2026-11-09-1';
+import { currentEmail } from './accounts.js?v=2026-11-09-1';
+import { uid } from './utils.js?v=2026-11-09-1';
 
 export const PRESENCE_SESSION = uid() + uid();      // 這個分頁的工作階段 id
 const REPORT_MS = 2 * 60 * 1000;

@@ -1,11 +1,11 @@
 // 備用庫清單（規劃畫面右下與專案備用庫編輯畫面共用）
 // 頁簽：新增（選類型）、雙擊改名、× 刪除；每一列：停留分鐘、天數、備註、刪除；拖拉排序、拖到別的頁簽、拖進行程（複製）
-import { state, emit } from './state.js?v=2026-11-08-2';
-import { LIB_TYPES, LIB_TYPE_LABEL, inferTabType, updateLibItem, addLibTab, renameLibTab, removeLibTab } from './library.js?v=2026-11-08-2';
-import { typeIcon, LIB_COLORS } from './markers.js?v=2026-11-08-2';
-import { h, selectEl, openModal, confirmDialog, toast } from './utils.js?v=2026-11-08-2';
-import { daysButton, scheduledTags, confirmRemoveLibItem, lockControls } from './ui-common.js?v=2026-11-08-2';
-import { makeSortable } from './dnd.js?v=2026-11-08-2';
+import { state, emit } from './state.js?v=2026-11-09-1';
+import { LIB_TYPES, LIB_TYPE_LABEL, inferTabType, updateLibItem, addLibTab, renameLibTab, removeLibTab } from './library.js?v=2026-11-09-1';
+import { typeIcon, LIB_COLORS } from './markers.js?v=2026-11-09-1';
+import { h, selectEl, openModal, confirmDialog, toast } from './utils.js?v=2026-11-09-1';
+import { daysButton, scheduledTags, confirmRemoveLibItem, lockControls } from './ui-common.js?v=2026-11-09-1';
+import { makeSortable } from './dnd.js?v=2026-11-09-1';
 
 /**
  * opts：

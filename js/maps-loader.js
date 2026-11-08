@@ -1,6 +1,6 @@
 // Google Maps JavaScript API 動態載入（官方 Dynamic Library Import 寫法的可讀版本）
 // 之後各模組用 await lib('maps' | 'marker' | 'places' | 'routes') 取得函式庫。
-import { GOOGLE_MAPS_API_KEY } from '../config.js?v=2026-11-08-2';
+import { GOOGLE_MAPS_API_KEY } from '../config.js?v=2026-11-09-1';
 
 let installed = false;
 

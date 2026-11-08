@@ -1,21 +1,21 @@
 // 主畫面：左地圖、右上行程流程、右下備用庫（專案共用、可直接編輯）；頂部列含存檔狀態、歷史、匯出、專案設定
-import { state, on, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js?v=2026-11-08-2';
+import { state, on, mutate, forEachLeg, deriveCharterTable, selectStop } from '../state.js?v=2026-11-09-1';
 import {
   startPlanSession, endPlanSession, listHistory, restoreSnapshot, hasUnsaved, saveNow, updateProject,
   migratePlanBackups, startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow,
   setPlanLocked, startLockWatch, stopLockWatch,
-} from '../store.js?v=2026-11-08-2';
-import { isAdmin } from '../accounts.js?v=2026-11-08-2';
-import { initRouteCache, requestRoutes, getRouteInfo } from '../routes.js?v=2026-11-08-2';
-import { computeSchedule } from '../schedule.js?v=2026-11-08-2';
-import { createMapView } from '../map-view.js?v=2026-11-08-2';
-import { createItineraryView } from '../itinerary-view.js?v=2026-11-08-2';
-import { createBackupView } from '../backup-view.js?v=2026-11-08-2';
-import { openExport } from '../export.js?v=2026-11-08-2';
-import { openProjectForm } from './project-form.js?v=2026-11-08-2';
-import { topBar, lockBarText } from './common.js?v=2026-11-08-2';
-import { setPresenceScreen } from '../presence.js?v=2026-11-08-2';
-import { h, debounce, toast, openModal, confirmDialog, promptDialog, fmtDateTime, transitDepartureDate } from '../utils.js?v=2026-11-08-2';
+} from '../store.js?v=2026-11-09-1';
+import { isAdmin } from '../accounts.js?v=2026-11-09-1';
+import { initRouteCache, requestRoutes, getRouteInfo } from '../routes.js?v=2026-11-09-1';
+import { computeSchedule } from '../schedule.js?v=2026-11-09-1';
+import { createMapView } from '../map-view.js?v=2026-11-09-1';
+import { createItineraryView } from '../itinerary-view.js?v=2026-11-09-1';
+import { createBackupView } from '../backup-view.js?v=2026-11-09-1';
+import { openExport } from '../export.js?v=2026-11-09-1';
+import { openProjectForm } from './project-form.js?v=2026-11-09-1';
+import { topBar, lockBarText } from './common.js?v=2026-11-09-1';
+import { setPresenceScreen } from '../presence.js?v=2026-11-09-1';
+import { h, debounce, toast, openModal, confirmDialog, promptDialog, fmtDateTime, transitDepartureDate } from '../utils.js?v=2026-11-09-1';
 
 const SPLIT_KEY = 'tripplanner.backupHeight';
 const ROUTE_DEBOUNCE = 800;

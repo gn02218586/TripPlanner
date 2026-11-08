@@ -1,5 +1,5 @@
 // 標記與圖示：地圖、行程清單、備用庫共用同一套外觀
-import { h, samePlace, fmtDist } from './utils.js?v=2026-11-08-2';
+import { h, samePlace, fmtDist } from './utils.js?v=2026-11-09-1';
 
 const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#0aa6a6', '#d6338a', '#808000', '#9a6324', '#000075'];
 /** 依天數自動配色 */
@@ -12,6 +12,23 @@ export function dayColor(i, n) {
 export const LIB_COLORS = { spot: '#2e9d4f', hotel: '#2f6fd6', food: '#e8710a' };
 
 export const TYPE_GLYPH = { spot: '', food: '🍴', hotel: '', airport: '✈' };
+
+/** 搜尋結果的金色星星（比一般標記大，地圖上同一時間只有一顆） */
+export function searchStarEl(name = '') {
+  const svg = '<svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">'
+    + '<path d="M12 1.8l3.1 6.5 7.1.9-5.2 4.9 1.3 7.1L12 17.8l-6.3 3.4 1.3-7.1L1.8 9.2l7.1-.9z" '
+    + 'fill="#ffc107" stroke="#7a5200" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+  const el = h('div', { class: 'search-star', title: name ? `搜尋結果：${name}` : '搜尋結果' });
+  el.innerHTML = svg;
+  return el;
+}
+
+/** 地點不在目前畫面內才平移讓它進入畫面；已在畫面內就不動（不改縮放） */
+export function panIntoView(map, pt) {
+  const bb = map.getBounds();
+  if (bb && bb.contains(pt)) return;
+  map.panTo(pt);
+}
 
 /** 地圖標記內容 */
 export function markerEl({ type = 'spot', label = '', name = '', color = '#555', faded = false, small = false, selected = false, ring = false }) {

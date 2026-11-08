@@ -1,11 +1,11 @@
 // 匯出：純文字行程表、匯入格式（可直接匯入、完整還原）、JSON、Google 地圖（KML＋每天導航連結）
-import { state, TYPE_LABEL, MODE_LABEL, dayCharterHours, prevPoint } from './state.js?v=2026-11-08-2';
-import { computeSchedule } from './schedule.js?v=2026-11-08-2';
-import { stopLabelMap } from './markers.js?v=2026-11-08-2';
-import { buildKML, daysWithStops, dayNavLinks } from './gmaps-export.js?v=2026-11-08-2';
-import { h, openModal, copyText, downloadFile, fmtHM, fmtDur, fmtDist, fmtDate, clone, toast } from './utils.js?v=2026-11-08-2';
-import { toImportText } from './text-format.js?v=2026-11-08-2';
-import { getLibrary } from './store.js?v=2026-11-08-2';
+import { state, TYPE_LABEL, MODE_LABEL, dayCharterHours, prevPoint } from './state.js?v=2026-11-09-1';
+import { computeSchedule } from './schedule.js?v=2026-11-09-1';
+import { stopLabelMap } from './markers.js?v=2026-11-09-1';
+import { buildKML, daysWithStops, dayNavLinks } from './gmaps-export.js?v=2026-11-09-1';
+import { h, openModal, copyText, downloadFile, fmtHM, fmtDur, fmtDist, fmtDate, clone, toast } from './utils.js?v=2026-11-09-1';
+import { toImportText } from './text-format.js?v=2026-11-09-1';
+import { getLibrary } from './store.js?v=2026-11-09-1';
 
 const WAYPOINT_LIMIT = { desktop: 9, mobile: 3 };
 

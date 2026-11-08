@@ -1,14 +1,14 @@
 // 帳號管理（只有管理員）：已登記帳號組的清單、備註、專案數量、最後上線、登記時間；登記與刪除登記
-import { on } from '../state.js?v=2026-11-08-2';
-import { listProjects, updateProject, deleteProject } from '../store.js?v=2026-11-08-2';
-import { isAdmin, isAdminEmail } from '../accounts.js?v=2026-11-08-2';
+import { on } from '../state.js?v=2026-11-09-1';
+import { listProjects, updateProject, deleteProject } from '../store.js?v=2026-11-09-1';
+import { isAdmin, isAdminEmail } from '../accounts.js?v=2026-11-09-1';
 import {
   listAccounts, ensureAccountsFromProjects, openRegisterDialog, updateAccountNote, deleteAccount, firebaseUsersButton,
   accountPicker, accountTitle,
-} from '../admin.js?v=2026-11-08-2';
-import { lastSeenByEmail, startPresenceWatch, onlineCount, isOnline, presenceList } from '../presence.js?v=2026-11-08-2';
-import { topBar } from './common.js?v=2026-11-08-2';
-import { h, toast, openModal, fmtDateTime } from '../utils.js?v=2026-11-08-2';
+} from '../admin.js?v=2026-11-09-1';
+import { lastSeenByEmail, startPresenceWatch, onlineCount, isOnline, presenceList } from '../presence.js?v=2026-11-09-1';
+import { topBar } from './common.js?v=2026-11-09-1';
+import { h, toast, openModal, fmtDateTime } from '../utils.js?v=2026-11-09-1';
 
 export async function mountAccounts(app) {
   const offs = [];

@@ -1,7 +1,7 @@
 // 時間表計算：抵達／出發時間、路段時間（冬季係數、手動時間）、每天統計與警示
-import { prevPoint, dayCharterHours, dayWinter } from './state.js?v=2026-11-08-2';
-import { getRouteInfo } from './routes.js?v=2026-11-08-2';
-import { parseHM, coordKey } from './utils.js?v=2026-11-08-2';
+import { prevPoint, dayCharterHours, dayWinter } from './state.js?v=2026-11-09-1';
+import { getRouteInfo } from './routes.js?v=2026-11-09-1';
+import { parseHM, coordKey } from './utils.js?v=2026-11-09-1';
 
 /** 手動時間的起訖點是否已變更 */
 export function manualMoved(leg, from, to) {

@@ -1,17 +1,18 @@
 // 專案備用庫編輯畫面：左地圖（所有頁簽的點，依頁簽類型配色）、右邊備用庫清單（與規劃畫面右下共用元件）
 // 搜尋新增、天數篩選、加入時指定天、匯入；頁簽可新增、改名、刪除
-import { lib } from '../maps-loader.js?v=2026-11-08-2';
-import { state, on, emit } from '../state.js?v=2026-11-08-2';
-import { startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow, startLockWatch, stopLockWatch } from '../store.js?v=2026-11-08-2';
-import { isAdmin } from '../accounts.js?v=2026-11-08-2';
-import { findLibItem, addLibItem, selectLibItem, mutateLib, mergeIntoLibrary, libItemMatches } from '../library.js?v=2026-11-08-2';
-import { dayPicker, dayTint, confirmRemoveLibItem } from '../ui-common.js?v=2026-11-08-2';
-import { createLibraryMap } from '../library-map.js?v=2026-11-08-2';
-import { createLibraryPanel } from '../library-panel.js?v=2026-11-08-2';
-import { openLibraryImport } from '../import.js?v=2026-11-08-2';
-import { topBar, lockBarText } from './common.js?v=2026-11-08-2';
-import { setPresenceScreen } from '../presence.js?v=2026-11-08-2';
-import { h, toast } from '../utils.js?v=2026-11-08-2';
+import { lib } from '../maps-loader.js?v=2026-11-09-1';
+import { state, on, emit } from '../state.js?v=2026-11-09-1';
+import { startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow, startLockWatch, stopLockWatch } from '../store.js?v=2026-11-09-1';
+import { isAdmin } from '../accounts.js?v=2026-11-09-1';
+import { findLibItem, addLibItem, selectLibItem, mutateLib, mergeIntoLibrary, libItemMatches } from '../library.js?v=2026-11-09-1';
+import { dayPicker, dayTint, confirmRemoveLibItem } from '../ui-common.js?v=2026-11-09-1';
+import { createLibraryMap } from '../library-map.js?v=2026-11-09-1';
+import { panIntoView } from '../markers.js?v=2026-11-09-1';
+import { createLibraryPanel } from '../library-panel.js?v=2026-11-09-1';
+import { openLibraryImport } from '../import.js?v=2026-11-09-1';
+import { topBar, lockBarText } from './common.js?v=2026-11-09-1';
+import { setPresenceScreen } from '../presence.js?v=2026-11-09-1';
+import { h, toast } from '../utils.js?v=2026-11-09-1';
 
 export async function mountLibrary(app, project) {
   const offs = [];
@@ -60,6 +61,13 @@ export async function mountLibrary(app, project) {
     filter: (it) => libItemMatches(it),
     selectedId: () => state.libSelected,
     onRowClick: (id) => selectLibItem(id),
+    // 點名稱＝點地圖標記：選取並打開備用點小視窗；不縮放，在畫面外才平移
+    onNameClick: (id) => {
+      const f = findLibItem(id); if (!f) return;
+      if (state.libSelected !== id) selectLibItem(id);
+      panIntoView(mapView.map, { lat: f.item.lat, lng: f.item.lng });
+      mapView.openItemPopup(id);
+    },
     emptyHint: '這個頁簽還沒有地點；可用上方搜尋、點地圖，或按右上「匯入」',
   });
 
@@ -103,7 +111,7 @@ export async function mountLibrary(app, project) {
         if (!r) return;
         if (r.added) toast(`已加入「${name}」`, 'ok');
         else toast('備用庫已有這個地點', 'warn');
-        mapView.map.panTo(pt);   // 只移動到新加入的點，不改縮放
+        panIntoView(mapView.map, pt);   // 不改縮放；新加入的點在畫面外才平移
         if (state.libSelected !== r.id) selectLibItem(r.id);
       } catch (e) { console.error(e); toast('加入失敗：' + e.message, 'error'); }
     });

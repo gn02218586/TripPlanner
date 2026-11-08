@@ -1,7 +1,7 @@
 // 拖曳（SortableJS）共用設定與放開後的處理
 // 清單種類（data-kind）：trip＝某天行程、backup＝備用庫目前頁簽、tabdrop＝備用庫頁簽按鈕（拖到別的頁簽）
-import { state, emit, moveStop } from './state.js?v=2026-11-08-2';
-import { libToTrip, stopToLibrary, moveLibItem } from './library.js?v=2026-11-08-2';
+import { state, emit, moveStop } from './state.js?v=2026-11-09-1';
+import { libToTrip, stopToLibrary, moveLibItem } from './library.js?v=2026-11-09-1';
 
 /**
  * 放開位置（依前後相鄰的點）：清單可能依天篩選，畫面上的順序不等於資料的 index
@@ -40,8 +40,14 @@ export function sortableLocked(el) {
   return k === 'trip' ? !!state.planRO : (k === 'backup' || k === 'tabdrop') ? !!state.libRO : false;
 }
 
+// 拖拉中或剛放開（某些瀏覽器放開後仍會觸發 click）：點名稱不打開小視窗
+let dragging = false, lastDragEnd = 0;
+export function justDragged() { return dragging || Date.now() - lastDragEnd < 300; }
+
 export function makeSortable(el, opts = {}) {
   return new window.Sortable(el, {
+    onStart: () => { dragging = true; },
+    onUnchoose: () => { if (dragging) { dragging = false; lastDragEnd = Date.now(); } },
     disabled: sortableLocked(el),
     group: { name: 'tp', pull: true, put: true },
     animation: 150,

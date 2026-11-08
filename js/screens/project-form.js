@@ -1,11 +1,11 @@
 // 建立專案／專案設定：地圖範圍（搜尋區域 viewport 或鎖定目前畫面）、日期、天數與各項預設值
-import { lib } from '../maps-loader.js?v=2026-11-08-2';
-import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL, deriveCharterTable } from '../state.js?v=2026-11-08-2';
-import { createProject, updateProject, deleteProject, copyProjectTo } from '../store.js?v=2026-11-08-2';
-import { h, selectEl, toast, num, fmtDate, addDays, confirmDialog, promptDialog, openModal } from '../utils.js?v=2026-11-08-2';
-import { isAdmin } from '../accounts.js?v=2026-11-08-2';
-import { accountPicker, accountTitle } from '../admin.js?v=2026-11-08-2';
-import { lockControls } from '../ui-common.js?v=2026-11-08-2';
+import { lib } from '../maps-loader.js?v=2026-11-09-1';
+import { state, MODES, MODE_LABEL, TYPES, TYPE_LABEL, deriveCharterTable } from '../state.js?v=2026-11-09-1';
+import { createProject, updateProject, deleteProject, copyProjectTo } from '../store.js?v=2026-11-09-1';
+import { h, selectEl, toast, num, fmtDate, addDays, confirmDialog, promptDialog, openModal } from '../utils.js?v=2026-11-09-1';
+import { isAdmin } from '../accounts.js?v=2026-11-09-1';
+import { accountPicker, accountTitle } from '../admin.js?v=2026-11-09-1';
+import { lockControls } from '../ui-common.js?v=2026-11-09-1';
 
 /**
  * onDeleted：有傳入時顯示「刪除專案」（只在首頁提供；地圖畫面開著規劃時不能刪）
