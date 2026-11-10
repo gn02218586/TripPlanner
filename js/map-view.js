@@ -1,17 +1,17 @@
 // 地圖：行程標記、備用庫標記（依頁簽類型配色）、路線、點擊新增與小視窗
-import { lib } from './maps-loader.js?v=2026-11-09-1';
-import { MAP_ID } from '../config.js?v=2026-11-09-1';
+import { lib } from './maps-loader.js?v=2026-11-10-1';
+import { MAP_ID } from '../config.js?v=2026-11-10-1';
 import {
   state, on, mutate, findStop, prevPoint, selectStop, DEFAULT_STAY,
   updateStop, moveStop, removeStop, backupDayFilter, itemForDay,
-} from './state.js?v=2026-11-09-1';
-import { buildTripMarkers, markerEl, legTagEl, compareNodes, dayColor, LIB_COLORS, TYPE_GLYPH, searchStarEl, panIntoView } from './markers.js?v=2026-11-09-1';
-import { findLibItem, libToTrip, stopToLibrary, updateLibItem, moveLibItem, libTabForType } from './library.js?v=2026-11-09-1';
-import { compareInfo } from './compare.js?v=2026-11-09-1';
-import { h, selectEl, confirmDialog, toast, fmtShortDur } from './utils.js?v=2026-11-09-1';
+} from './state.js?v=2026-11-10-1';
+import { buildTripMarkers, markerEl, legTagEl, compareNodes, dayColor, LIB_COLORS, TYPE_GLYPH, searchStarEl, panIntoView } from './markers.js?v=2026-11-10-1';
+import { findLibItem, libToTrip, stopToLibrary, updateLibItem, moveLibItem, libTabForType } from './library.js?v=2026-11-10-1';
+import { compareInfo } from './compare.js?v=2026-11-10-1';
+import { h, selectEl, confirmDialog, toast, fmtShortDur } from './utils.js?v=2026-11-10-1';
 import {
   buildAddPanel, typeOptions, dayOptions, tabOptions, dayAddRow, confirmRemoveLibItem, daysButton, dayPicker, scheduledTags, lockControls,
-} from './ui-common.js?v=2026-11-09-1';
+} from './ui-common.js?v=2026-11-10-1';
 
 export async function createMapView(container, { getSchedule }) {
   const { Map, InfoWindow, Polyline } = await lib('maps');

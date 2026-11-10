@@ -1,7 +1,7 @@
 // 拖曳（SortableJS）共用設定與放開後的處理
 // 清單種類（data-kind）：trip＝某天行程、backup＝備用庫目前頁簽、tabdrop＝備用庫頁簽按鈕（拖到別的頁簽）
-import { state, emit, moveStop } from './state.js?v=2026-11-09-1';
-import { libToTrip, stopToLibrary, moveLibItem } from './library.js?v=2026-11-09-1';
+import { state, emit, moveStop } from './state.js?v=2026-11-10-1';
+import { libToTrip, stopToLibrary, moveLibItem } from './library.js?v=2026-11-10-1';
 
 /**
  * 放開位置（依前後相鄰的點）：清單可能依天篩選，畫面上的順序不等於資料的 index

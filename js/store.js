@@ -2,11 +2,11 @@
 import {
   db, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
   query, where, orderBy, limit, onSnapshot, runTransaction, writeBatch, deleteField,
-} from './firebase.js?v=2026-11-09-1';
-import { state, emit, on, normalizePlan, fitPlanToProject, normDays, HOTEL_TAB_KIND } from './state.js?v=2026-11-09-1';
-import { debounce, clone, uid, toast, choose, fmtDateTime } from './utils.js?v=2026-11-09-1';
-import { isAdmin, currentEmail } from './accounts.js?v=2026-11-09-1';
-import { normalizeLibrary, mergeIntoLibrary, inferTabType, libTabForType } from './library.js?v=2026-11-09-1';
+} from './firebase.js?v=2026-11-10-1';
+import { state, emit, on, normalizePlan, fitPlanToProject, normDays, HOTEL_TAB_KIND } from './state.js?v=2026-11-10-1';
+import { debounce, clone, uid, toast, choose, fmtDateTime } from './utils.js?v=2026-11-10-1';
+import { isAdmin, currentEmail } from './accounts.js?v=2026-11-10-1';
+import { normalizeLibrary, mergeIntoLibrary, inferTabType, libTabForType } from './library.js?v=2026-11-10-1';
 
 const SESSION_ID = uid();          // 用來分辨「自己存的」與「別人存的」
 const SAVE_DEBOUNCE = 2000;

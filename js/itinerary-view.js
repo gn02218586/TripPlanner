@@ -1,15 +1,15 @@
 // 右上：行程流程（依天分組）、搜尋、路段資訊、拖曳排序
-import { lib } from './maps-loader.js?v=2026-11-09-1';
+import { lib } from './maps-loader.js?v=2026-11-10-1';
 import {
   state, on, emit, mutate, MODES, MODE_LABEL, updateStop, updateLeg, dayCharterHours, selectStop,
   prevPoint, findStop, removeStop,
-} from './state.js?v=2026-11-09-1';
-import { stopToLibrary } from './library.js?v=2026-11-09-1';
-import { stopLabelMap, typeIcon, dayColor } from './markers.js?v=2026-11-09-1';
-import { retryRoute, gmapsDirUrl } from './routes.js?v=2026-11-09-1';
-import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, fmtShortDur, num, parseHM, toast, confirmDialog } from './utils.js?v=2026-11-09-1';
-import { buildAddPanel, lockControls } from './ui-common.js?v=2026-11-09-1';
-import { makeSortable, justDragged } from './dnd.js?v=2026-11-09-1';
+} from './state.js?v=2026-11-10-1';
+import { stopToLibrary } from './library.js?v=2026-11-10-1';
+import { stopLabelMap, typeIcon, dayColor } from './markers.js?v=2026-11-10-1';
+import { retryRoute, gmapsDirUrl } from './routes.js?v=2026-11-10-1';
+import { h, selectEl, fmtHM, fmtDur, fmtDist, fmtDate, fmtShortDur, num, parseHM, toast, confirmDialog } from './utils.js?v=2026-11-10-1';
+import { buildAddPanel, lockControls } from './ui-common.js?v=2026-11-10-1';
+import { makeSortable, justDragged } from './dnd.js?v=2026-11-10-1';
 
 export async function createItineraryView(container, { getSchedule, mapView }) {
   const offs = [];

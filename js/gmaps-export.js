@@ -1,9 +1,9 @@
 // 匯出成 Google 地圖可用的格式：KML（Google 我的地圖 My Maps 匯入用）與每天的 Google Maps 導航連結
-import { state, prevPoint, TYPE_LABEL, MODE_LABEL } from './state.js?v=2026-11-09-1';
-import { computeSchedule } from './schedule.js?v=2026-11-09-1';
-import { getRouteInfo } from './routes.js?v=2026-11-09-1';
-import { stopLabelMap, dayColor } from './markers.js?v=2026-11-09-1';
-import { fmtHM, fmtDist, fmtShortDur, fmtDate, coordKey } from './utils.js?v=2026-11-09-1';
+import { state, prevPoint, TYPE_LABEL, MODE_LABEL } from './state.js?v=2026-11-10-1';
+import { computeSchedule } from './schedule.js?v=2026-11-10-1';
+import { getRouteInfo } from './routes.js?v=2026-11-10-1';
+import { stopLabelMap, dayColor } from './markers.js?v=2026-11-10-1';
+import { fmtHM, fmtDist, fmtShortDur, fmtDate, coordKey } from './utils.js?v=2026-11-10-1';
 
 // ---------- 共用 ----------
 /** 網站的每天顏色（#rrggbb 或 hsl()）→ KML 顏色 aabbggrr */
