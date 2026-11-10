@@ -1,12 +1,12 @@
 // 規劃畫面右下：備用庫（每個專案一份，所有規劃共用；可直接編輯）
 // 「本日｜全部」依天篩選、地圖顯示備用點、隱藏已排入；滑鼠停 0.5 秒顯示與選取點的路線比較
-import { state, on, emit, scheduledDays, backupDayFilter, itemForDay } from './state.js?v=2026-11-09-1';
-import { findLibItem } from './library.js?v=2026-11-09-1';
-import { compareNodes } from './markers.js?v=2026-11-09-1';
-import { h } from './utils.js?v=2026-11-09-1';
-import { requestCompare, compareInfo } from './compare.js?v=2026-11-09-1';
-import { createLibraryPanel } from './library-panel.js?v=2026-11-09-1';
-import { dayTint } from './ui-common.js?v=2026-11-09-1';
+import { state, on, emit, scheduledDays, backupDayFilter, itemForDay } from './state.js?v=2026-11-10-1';
+import { findLibItem } from './library.js?v=2026-11-10-1';
+import { compareNodes } from './markers.js?v=2026-11-10-1';
+import { h } from './utils.js?v=2026-11-10-1';
+import { requestCompare, compareInfo } from './compare.js?v=2026-11-10-1';
+import { createLibraryPanel } from './library-panel.js?v=2026-11-10-1';
+import { dayTint } from './ui-common.js?v=2026-11-10-1';
 
 const HIDE_KEY = 'tripplanner.hideScheduled';
 const loadHide = () => { try { return localStorage.getItem(HIDE_KEY) === '1'; } catch { return false; } };

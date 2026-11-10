@@ -1,8 +1,8 @@
 // 地圖小視窗、搜尋結果與備用庫清單共用的介面元件
-import { h, selectEl, fmtDate, confirmDialog, openModal, toast } from './utils.js?v=2026-11-09-1';
-import { state, TYPES, TYPE_LABEL, DEFAULT_STAY, addStopSmart, findStop, scheduledDays, normDays } from './state.js?v=2026-11-09-1';
-import { findLibItem, removeLibItem, addLibItem, libTabForType } from './library.js?v=2026-11-09-1';
-import { dayColor } from './markers.js?v=2026-11-09-1';
+import { h, selectEl, fmtDate, confirmDialog, openModal, toast } from './utils.js?v=2026-11-10-1';
+import { state, TYPES, TYPE_LABEL, DEFAULT_STAY, addStopSmart, findStop, scheduledDays, normDays } from './state.js?v=2026-11-10-1';
+import { findLibItem, removeLibItem, addLibItem, libTabForType } from './library.js?v=2026-11-10-1';
+import { dayColor } from './markers.js?v=2026-11-10-1';
 
 export const typeOptions = () => TYPES.map(t => ({ value: t, label: TYPE_LABEL[t] }));
 

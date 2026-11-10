@@ -1,5 +1,5 @@
 // 標記與圖示：地圖、行程清單、備用庫共用同一套外觀
-import { h, samePlace, fmtDist } from './utils.js?v=2026-11-09-1';
+import { h, samePlace, fmtDist } from './utils.js?v=2026-11-10-1';
 
 const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#0aa6a6', '#d6338a', '#808000', '#9a6324', '#000075'];
 /** 依天數自動配色 */

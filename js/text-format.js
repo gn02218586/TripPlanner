@@ -4,9 +4,9 @@
 // - 欄位以「|」分隔；名稱與備註中的「|」匯出時改成全形「｜」，換行改成「\n」兩個字元
 // - 搜尋字欄位：[id:地點ID][@緯度,經度][ 搜尋文字]；有座標直接用座標，只有 ID 用 ID 取得，都沒有才搜尋
 // - 天欄位：D1、D1,D3、D1、D3、1,3；空白＝不限
-import { TYPE_LABEL, MODE_LABEL, dayCharterHours, normDays } from './state.js?v=2026-11-09-1';
-import { inferTabType, LIB_TYPE_LABEL, LIB_TYPES } from './library.js?v=2026-11-09-1';
-import { addDays } from './utils.js?v=2026-11-09-1';
+import { TYPE_LABEL, MODE_LABEL, dayCharterHours, normDays } from './state.js?v=2026-11-10-1';
+import { inferTabType, LIB_TYPE_LABEL, LIB_TYPES } from './library.js?v=2026-11-10-1';
+import { addDays } from './utils.js?v=2026-11-10-1';
 
 export const TYPE_MAP = { 機場: 'airport', 景點: 'spot', 餐廳: 'food', 住宿: 'hotel' };
 export const MODE_MAP = { 開車: 'drive', 大眾運輸: 'transit', 步行: 'walk', 其他: 'other' };

@@ -4,8 +4,8 @@
 // - 預設頁簽：備用景點、備用住宿、備用餐廳
 import {
   state, emit, mutate, roBlocked, DEFAULT_STAY, addStopToDay, insertIndexFor, selectStop, normDays, resolveIndex, effectiveDays, findStop,
-} from './state.js?v=2026-11-09-1';
-import { uid, samePlace } from './utils.js?v=2026-11-09-1';
+} from './state.js?v=2026-11-10-1';
+import { uid, samePlace } from './utils.js?v=2026-11-10-1';
 
 export const LIB_TYPES = ['spot', 'hotel', 'food'];
 export const LIB_TYPE_LABEL = { spot: '景點', hotel: '住宿', food: '餐廳' };

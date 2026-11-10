@@ -1,10 +1,10 @@
 // 各畫面共用：頂部列、暱稱（存在這台電腦的瀏覽器；沒填就顯示帳號名稱）
-import { state, emit } from '../state.js?v=2026-11-09-1';
-import { auth, signOut } from '../firebase.js?v=2026-11-09-1';
-import { h, promptDialog } from '../utils.js?v=2026-11-09-1';
-import { accountName, currentEmail, isAdmin } from '../accounts.js?v=2026-11-09-1';
-import { stopPresence } from '../presence.js?v=2026-11-09-1';
-import { onlineButton } from '../admin.js?v=2026-11-09-1';
+import { state, emit } from '../state.js?v=2026-11-10-1';
+import { auth, signOut } from '../firebase.js?v=2026-11-10-1';
+import { h, promptDialog } from '../utils.js?v=2026-11-10-1';
+import { accountName, currentEmail, isAdmin } from '../accounts.js?v=2026-11-10-1';
+import { stopPresence } from '../presence.js?v=2026-11-10-1';
+import { onlineButton } from '../admin.js?v=2026-11-10-1';
 
 const NICK_KEY = 'tripplanner.nickname';
 

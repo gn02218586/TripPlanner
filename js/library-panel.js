@@ -1,11 +1,11 @@
 // 備用庫清單（規劃畫面右下與專案備用庫編輯畫面共用）
 // 頁簽：新增（選類型）、雙擊改名、× 刪除；每一列：停留分鐘、天數、備註、刪除；拖拉排序、拖到別的頁簽、拖進行程（複製）
-import { state, emit } from './state.js?v=2026-11-09-1';
-import { LIB_TYPES, LIB_TYPE_LABEL, inferTabType, updateLibItem, addLibTab, renameLibTab, removeLibTab } from './library.js?v=2026-11-09-1';
-import { typeIcon, LIB_COLORS } from './markers.js?v=2026-11-09-1';
-import { h, selectEl, openModal, confirmDialog, toast } from './utils.js?v=2026-11-09-1';
-import { daysButton, scheduledTags, confirmRemoveLibItem, lockControls } from './ui-common.js?v=2026-11-09-1';
-import { makeSortable } from './dnd.js?v=2026-11-09-1';
+import { state, emit } from './state.js?v=2026-11-10-1';
+import { LIB_TYPES, LIB_TYPE_LABEL, inferTabType, updateLibItem, addLibTab, renameLibTab, removeLibTab } from './library.js?v=2026-11-10-1';
+import { typeIcon, LIB_COLORS } from './markers.js?v=2026-11-10-1';
+import { h, selectEl, openModal, confirmDialog, toast } from './utils.js?v=2026-11-10-1';
+import { daysButton, scheduledTags, confirmRemoveLibItem, lockControls } from './ui-common.js?v=2026-11-10-1';
+import { makeSortable } from './dnd.js?v=2026-11-10-1';
 
 /**
  * opts：
@@ -17,6 +17,25 @@ import { makeSortable } from './dnd.js?v=2026-11-09-1';
  * - onRowEnter(id, li)、onRowLeave()、beforeRender()（滑鼠停留比較用）
  * - emptyHint：頁簽沒有點時的提示
  */
+/** Google Maps 地點網址（只產生網址，不呼叫 API）：有地點 ID → 名稱＋ID；只有座標 → 經緯度；都沒有 → 名稱搜尋 */
+export function gmapsPlaceUrl(it) {
+  const base = 'https://www.google.com/maps/search/?api=1&query=';
+  const name = encodeURIComponent(it.name || '');
+  if (it.placeId) return `${base}${name}&query_place_id=${encodeURIComponent(it.placeId)}`;
+  if (Number.isFinite(it.lat) && Number.isFinite(it.lng) && (it.lat || it.lng)) return `${base}${it.lat},${it.lng}`;
+  return base + name;
+}
+
+const GMAPS_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="#ea4335" d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff"/></svg>';
+
+/** 名稱後的 Google Maps 小圖示：新分頁開啟；不觸發列的選取、地圖移動、拖拉、編輯；鎖定時照樣可用 */
+function gmapsLink(it) {
+  const stop = (e) => e.stopPropagation();
+  return h('a', { class: 'gmaps-link', href: gmapsPlaceUrl(it), target: '_blank', rel: 'noopener',
+    title: '在 Google Maps 開啟', 'aria-label': '在 Google Maps 開啟', draggable: 'false', html: GMAPS_ICON,
+    onClick: stop, onMousedown: stop, onTouchstart: stop, onPointerdown: stop, onDblclick: stop });
+}
+
 export function createLibraryPanel(container, opts = {}) {
   let sortables = [];
   const head = h('div', { class: 'backup-head' });
@@ -86,6 +105,7 @@ export function createLibraryPanel(container, opts = {}) {
       },
         typeIcon(it.type, LIB_COLORS[active.type]),
         h('a', { href: '#', class: 'bname', title: it.name, onClick: (e) => { e.preventDefault(); (opts.onNameClick || opts.onRowClick)?.(it.id); } }, it.name),
+        gmapsLink(it),
         it.type !== 'hotel'
           ? h('label', { class: 'lib-stay small', title: '停留分鐘' },
             h('input', { type: 'number', min: 0, step: 5, class: 'num', value: it.stayMin ?? 0,

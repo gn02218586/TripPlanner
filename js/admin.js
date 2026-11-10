@@ -1,12 +1,12 @@
 // 管理員功能：帳號登記（accounts 集合）、登記表單、帳號選單、線上使用者名單
 // 權限（firestore.rules）：accounts 只有管理員能讀寫；presence 只有管理員能讀
-import { db, collection, doc, getDocs, updateDoc, deleteDoc, runTransaction, writeBatch } from './firebase.js?v=2026-11-09-1';
-import { on } from './state.js?v=2026-11-09-1';
+import { db, collection, doc, getDocs, updateDoc, deleteDoc, runTransaction, writeBatch } from './firebase.js?v=2026-11-10-1';
+import { on } from './state.js?v=2026-11-10-1';
 import {
   ACCOUNT_DOMAIN, ACCOUNT_NAME_RE, FIREBASE_USERS_URL, accountDocId, accountLabel, isAdmin, isAdminEmail, toEmail,
-} from './accounts.js?v=2026-11-09-1';
-import { presenceList, isOnline, onlineCount, cleanupOldPresence, startPresenceWatch, deviceGroups, KEEP_MS } from './presence.js?v=2026-11-09-1';
-import { h, openModal, toast, copyText, fmtDateTime } from './utils.js?v=2026-11-09-1';
+} from './accounts.js?v=2026-11-10-1';
+import { presenceList, isOnline, onlineCount, cleanupOldPresence, startPresenceWatch, deviceGroups, KEEP_MS } from './presence.js?v=2026-11-10-1';
+import { h, openModal, toast, copyText, fmtDateTime } from './utils.js?v=2026-11-10-1';
 
 // =====================================================================
 // 帳號登記資料：accounts/{帳號名稱}  { name, email, note, createdAt }

@@ -1,12 +1,12 @@
 // 專案列表＋規劃分支圖：左側專案卡片，點選後右側（窄螢幕在卡片下方）展開該專案的規劃分支
-import { listProjects } from '../store.js?v=2026-11-09-1';
-import { h, fmtDate, fmtDateTime } from '../utils.js?v=2026-11-09-1';
-import { openProjectForm } from './project-form.js?v=2026-11-09-1';
-import { topBar } from './common.js?v=2026-11-09-1';
-import { buildBranch } from './plans.js?v=2026-11-09-1';
-import { openImportProject } from '../import.js?v=2026-11-09-1';
-import { isAdmin, accountLabel, isAdminEmail } from '../accounts.js?v=2026-11-09-1';
-import { listAccounts, ensureAccountsFromProjects, accountTitle, openRegisterDialog } from '../admin.js?v=2026-11-09-1';
+import { listProjects } from '../store.js?v=2026-11-10-1';
+import { h, fmtDate, fmtDateTime } from '../utils.js?v=2026-11-10-1';
+import { openProjectForm } from './project-form.js?v=2026-11-10-1';
+import { topBar } from './common.js?v=2026-11-10-1';
+import { buildBranch } from './plans.js?v=2026-11-10-1';
+import { openImportProject } from '../import.js?v=2026-11-10-1';
+import { isAdmin, accountLabel, isAdminEmail } from '../accounts.js?v=2026-11-10-1';
+import { listAccounts, ensureAccountsFromProjects, accountTitle, openRegisterDialog } from '../admin.js?v=2026-11-10-1';
 
 const STUB_Y = 30;   // 分支連接線在第一張規劃卡片的高度（與 CSS 一致）
 

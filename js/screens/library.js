@@ -1,18 +1,18 @@
 // 專案備用庫編輯畫面：左地圖（所有頁簽的點，依頁簽類型配色）、右邊備用庫清單（與規劃畫面右下共用元件）
 // 搜尋新增、天數篩選、加入時指定天、匯入；頁簽可新增、改名、刪除
-import { lib } from '../maps-loader.js?v=2026-11-09-1';
-import { state, on, emit } from '../state.js?v=2026-11-09-1';
-import { startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow, startLockWatch, stopLockWatch } from '../store.js?v=2026-11-09-1';
-import { isAdmin } from '../accounts.js?v=2026-11-09-1';
-import { findLibItem, addLibItem, selectLibItem, mutateLib, mergeIntoLibrary, libItemMatches } from '../library.js?v=2026-11-09-1';
-import { dayPicker, dayTint, confirmRemoveLibItem } from '../ui-common.js?v=2026-11-09-1';
-import { createLibraryMap } from '../library-map.js?v=2026-11-09-1';
-import { panIntoView } from '../markers.js?v=2026-11-09-1';
-import { createLibraryPanel } from '../library-panel.js?v=2026-11-09-1';
-import { openLibraryImport } from '../import.js?v=2026-11-09-1';
-import { topBar, lockBarText } from './common.js?v=2026-11-09-1';
-import { setPresenceScreen } from '../presence.js?v=2026-11-09-1';
-import { h, toast } from '../utils.js?v=2026-11-09-1';
+import { lib } from '../maps-loader.js?v=2026-11-10-1';
+import { state, on, emit } from '../state.js?v=2026-11-10-1';
+import { startLibrarySession, endLibrarySession, hasUnsavedLibrary, saveLibraryNow, startLockWatch, stopLockWatch } from '../store.js?v=2026-11-10-1';
+import { isAdmin } from '../accounts.js?v=2026-11-10-1';
+import { findLibItem, addLibItem, selectLibItem, mutateLib, mergeIntoLibrary, libItemMatches } from '../library.js?v=2026-11-10-1';
+import { dayPicker, dayTint, confirmRemoveLibItem } from '../ui-common.js?v=2026-11-10-1';
+import { createLibraryMap } from '../library-map.js?v=2026-11-10-1';
+import { panIntoView } from '../markers.js?v=2026-11-10-1';
+import { createLibraryPanel } from '../library-panel.js?v=2026-11-10-1';
+import { openLibraryImport } from '../import.js?v=2026-11-10-1';
+import { topBar, lockBarText } from './common.js?v=2026-11-10-1';
+import { setPresenceScreen } from '../presence.js?v=2026-11-10-1';
+import { h, toast } from '../utils.js?v=2026-11-10-1';
 
 export async function mountLibrary(app, project) {
   const offs = [];

@@ -1,13 +1,13 @@
 // 規劃分支：在專案列表右側（窄螢幕在專案卡片下方）展開某專案底下的所有規劃
 // 可開啟、複製成新規劃、刪除、開啟新規劃（空白或複製現有）、匯入行程
-import { state, blankPlanData, normalizePlan, fitPlanToProject } from '../state.js?v=2026-11-09-1';
-import { listPlans, getPlan, createPlan, deletePlan, getLibrary, listProjects, copyPlanToProject, migratePlanBackups, setPlanLocked } from '../store.js?v=2026-11-09-1';
-import { isAdmin, accountLabel } from '../accounts.js?v=2026-11-09-1';
-import { listAccounts, accountTitle } from '../admin.js?v=2026-11-09-1';
-import { libraryCounts } from '../library.js?v=2026-11-09-1';
-import { h, selectEl, fmtDateTime, toast, openModal, confirmDialog, promptDialog, clone, uid } from '../utils.js?v=2026-11-09-1';
-import { openProjectForm } from './project-form.js?v=2026-11-09-1';
-import { openImport } from '../import.js?v=2026-11-09-1';
+import { state, blankPlanData, normalizePlan, fitPlanToProject } from '../state.js?v=2026-11-10-1';
+import { listPlans, getPlan, createPlan, deletePlan, getLibrary, listProjects, copyPlanToProject, migratePlanBackups, setPlanLocked } from '../store.js?v=2026-11-10-1';
+import { isAdmin, accountLabel } from '../accounts.js?v=2026-11-10-1';
+import { listAccounts, accountTitle } from '../admin.js?v=2026-11-10-1';
+import { libraryCounts } from '../library.js?v=2026-11-10-1';
+import { h, selectEl, fmtDateTime, toast, openModal, confirmDialog, promptDialog, clone, uid } from '../utils.js?v=2026-11-10-1';
+import { openProjectForm } from './project-form.js?v=2026-11-10-1';
+import { openImport } from '../import.js?v=2026-11-10-1';
 
 /** 複製規劃的行程（點換新 id；備用庫是專案共用，不必複製） */
 async function copyPlanData(project, srcId) {

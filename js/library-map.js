@@ -1,13 +1,13 @@
 // 專案備用庫編輯畫面的地圖：依頁簽類型配色顯示所有頁簽的點、選取強調（不縮放）、點地圖／POI 加入、標記小視窗編輯
-import { lib } from './maps-loader.js?v=2026-11-09-1';
-import { MAP_ID } from '../config.js?v=2026-11-09-1';
-import { state, on } from './state.js?v=2026-11-09-1';
-import { markerEl, LIB_COLORS, TYPE_GLYPH } from './markers.js?v=2026-11-09-1';
+import { lib } from './maps-loader.js?v=2026-11-10-1';
+import { MAP_ID } from '../config.js?v=2026-11-10-1';
+import { state, on } from './state.js?v=2026-11-10-1';
+import { markerEl, LIB_COLORS, TYPE_GLYPH } from './markers.js?v=2026-11-10-1';
 import {
   findLibItem, addLibItem, moveLibItem, updateLibItem, selectLibItem, libItemMatches,
-} from './library.js?v=2026-11-09-1';
-import { dayPicker, daysButton, lockControls } from './ui-common.js?v=2026-11-09-1';
-import { h, selectEl, toast } from './utils.js?v=2026-11-09-1';
+} from './library.js?v=2026-11-10-1';
+import { dayPicker, daysButton, lockControls } from './ui-common.js?v=2026-11-10-1';
+import { h, selectEl, toast } from './utils.js?v=2026-11-10-1';
 
 export async function createLibraryMap(container, { onRemove, getAddDays = () => [] }) {
   const { Map, InfoWindow } = await lib('maps');
